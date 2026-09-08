@@ -1,6 +1,6 @@
 // ── CRT analysis: range modes, expansion/contraction, FVGs, wick imbalance ──
 
-import type { Candle, CRT, FVG } from '@/lib/types';
+import type { Candle, CRT, CRTPhase, CRTStatus, Direction, FVG } from '@/lib/types';
 import { CRT_LOOKBACK } from '@/lib/constants';
 import { clamp, mean } from '@/lib/utils';
 
@@ -92,4 +92,141 @@ export function analyzeCRT(candles: Candle[]): CRT {
     score: Math.round(score),
     notes
   };
+}
+
+// ── CRT phase model: manipulation → sweep → reclaim → displacement → confirm ─
+
+/**
+ * Classify the current candle-range-theory setup on the most recent dealing
+ * range (19 completed bars + the live bar). Sweep of the range high with a
+ * reclaim is bearish; sweep of the low with a reclaim is bullish. Status
+ * escalates Developing → Confirming → Confirmed, or Invalidated.
+ */
+export function analyzeCRTPhase(candles: Candle[]): CRTPhase {
+  const notes: string[] = [];
+  const base: CRTPhase = {
+    status: 'developing',
+    direction: 'neutral',
+    score: 0,
+    rangeHigh: null,
+    rangeLow: null,
+    rangeMid: null,
+    manipulation: false,
+    sweep: null,
+    reclaim: false,
+    displacement: false,
+    confirmation: false,
+    invalidated: false,
+    notes
+  };
+  if (candles.length < 12) return base;
+
+  const win = candles.slice(-22, -1);
+  const rangeHigh = Math.max(...win.map((c) => c.h));
+  const rangeLow = Math.min(...win.map((c) => c.l));
+  if (rangeHigh === rangeLow) return base;
+  const rangeMid = (rangeHigh + rangeLow) / 2;
+
+  const recent = candles.slice(-5);
+  let sweep: 'high' | 'low' | null = null;
+  let sweepIdx = -1;
+  let reclaim = false;
+  let reclaimIdx = -1;
+  let manipulation = false;
+  let direction: CRTPhase['direction'] = 'neutral';
+
+  recent.forEach((c, i) => {
+    if (c.h > rangeHigh && c.c < rangeHigh) manipulation = true;
+    if (c.l < rangeLow && c.c > rangeLow) manipulation = true;
+    if (c.c > rangeHigh && sweep !== 'low') { sweep = 'high'; sweepIdx = i; reclaim = false; }
+    if (c.c < rangeLow && sweep !== 'high') { sweep = 'low'; sweepIdx = i; reclaim = false; }
+    if (sweep === 'high' && i > sweepIdx && c.c < rangeHigh) { reclaim = true; reclaimIdx = i; }
+    if (sweep === 'low' && i > sweepIdx && c.c > rangeLow) { reclaim = true; reclaimIdx = i; }
+  });
+
+  if (sweep === 'high') direction = reclaim ? 'bearish' : 'bullish'; // break up = expansion; reclaim = failed breakout
+  if (sweep === 'low') direction = reclaim ? 'bullish' : 'bearish';
+
+  // Displacement candle within the window, aligned with the setup direction.
+  const dispRaw = detectDisplacementIn(recent);
+  const disp = dispRaw === 'up' ? 'bullish' : dispRaw === 'down' ? 'bearish' : null;
+  const displacement = disp !== null && (direction === 'neutral' || disp === direction);
+  if (disp !== null && direction === 'neutral') direction = disp;
+
+  // Confirmation: close beyond the range mid in setup direction after reclaim.
+  const lastC = recent[recent.length - 1];
+  const afterReclaim = reclaimIdx >= 0 ? recent.slice(reclaimIdx + 1) : recent.slice(-2);
+  const confirmation =
+    reclaim &&
+    displacement &&
+    afterReclaim.some((c) => (direction === 'bullish' ? c.c > rangeMid : c.c < rangeMid));
+
+  // Invalidated: price closed through the opposite extreme of the setup.
+  const invalidated =
+    (direction === 'bullish' && lastC.c < rangeLow) ||
+    (direction === 'bearish' && lastC.c > rangeHigh);
+
+  let score = 0;
+  let status: CRTStatus = 'developing';
+  if (invalidated) {
+    status = 'invalidated';
+    notes.push('Setup invalidated — price closed through the opposing range extreme.');
+    score = direction === 'bullish' ? -15 : direction === 'bearish' ? 15 : 0;
+  } else if (sweep === null) {
+    if (manipulation) {
+      const wickUp = recent.some((c) => c.h - Math.max(c.o, c.c) > (c.c > c.o ? c.c - c.o : c.o - c.c) && c.h > rangeHigh);
+      direction = wickUp ? 'bearish' : 'bullish';
+      score = wickUp ? -20 : 20;
+      notes.push(`Manipulation wick ${wickUp ? 'above the high — sell-side intent' : 'below the low — buy-side intent'}; range still holding.`);
+    } else {
+      notes.push('Range intact — accumulating; no sweep yet.');
+    }
+  } else if (reclaim) {
+    if (displacement && confirmation) {
+      status = 'confirmed';
+      score = direction === 'bullish' ? 72 : -72;
+      notes.push(`Confirmed ${direction} CRT: ${sweep === 'high' ? 'buy-side' : 'sell-side'} liquidity swept, reclaimed, displaced and confirmed.`);
+    } else {
+      status = 'confirming';
+      score = direction === 'bullish' ? 45 : -45;
+      notes.push(`${direction === 'bullish' ? 'Bullish' : 'Bearish'} CRT forming — sweep + reclaim locked; awaiting${displacement ? ' confirmation close' : ' displacement'}.`);
+    }
+  } else {
+    notes.push(`Range ${sweep === 'high' ? 'high' : 'low'} swept — clean expansion, no reclaim yet.`);
+    score = direction === 'bullish' ? 30 : -30;
+  }
+
+  if (status !== 'invalidated' && sweep !== null) {
+    notes.push(`Swept ${sweep === 'high' ? 'range high' : 'range low'} @ ${(sweep === 'high' ? rangeHigh : rangeLow).toFixed(5)}.`);
+  }
+
+  return {
+    status,
+    direction,
+    score: clamp(Math.round(score), -100, 100),
+    rangeHigh,
+    rangeLow,
+    rangeMid,
+    manipulation,
+    sweep,
+    reclaim,
+    displacement,
+    confirmation,
+    invalidated,
+    notes
+  };
+}
+
+/** Direction of the last displacement candle inside a small window. */
+function detectDisplacementIn(win: Candle[]): Direction | null {
+  if (win.length < 6) return null;
+  const sorted = [...win].map((c) => c.h - c.l).sort((a, b) => a - b);
+  const med = sorted[Math.floor(sorted.length / 2)] || 1;
+  for (let i = win.length - 1; i >= Math.max(0, win.length - 4); i--) {
+    const c = win[i];
+    const body = Math.abs(c.c - c.o);
+    const range = c.h - c.l;
+    if (range > 0 && body / range >= 0.7 && body / med >= 1.8) return c.c > c.o ? 'up' : 'down';
+  }
+  return null;
 }

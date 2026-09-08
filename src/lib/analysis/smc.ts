@@ -1,6 +1,9 @@
 // ── SMC analysis: swings, BOS / CHoCH, order blocks, liquidity, stop hunts ──
 
-import type { Candle, LiquidityZone, OrderBlock, SMC, StopHunt, StructureEvent, Swing } from '@/lib/types';
+import type {
+  BreakerBlock, Candle, Displacement, EqualLevel, LiquidityZone, OrderBlock,
+  PremiumDiscount, PrevHL, SMC, StopHunt, StructureEvent, Swing, SwingLabel
+} from '@/lib/types';
 import { SWING_ARMS } from '@/lib/constants';
 import { clamp } from '@/lib/utils';
 
@@ -36,6 +39,153 @@ export function detectSwings(candles: Candle[], arm = SWING_ARMS): Swing[] {
     if (better) merged[merged.length - 1] = s;
   }
   return merged;
+}
+
+/** Fractal classification: HH / HL / LH / LL vs the previous same-kind swing. */
+export function labelSwings(swings: Swing[]): SwingLabel[] {
+  const out: SwingLabel[] = [];
+  let prevHigh: number | null = null;
+  let prevLow: number | null = null;
+  for (const s of swings) {
+    if (s.kind === 'high') {
+      out.push({ ...s, label: prevHigh === null ? 'HH' : s.price > prevHigh ? 'HH' : 'LH' });
+      prevHigh = s.price;
+    } else {
+      out.push({ ...s, label: prevLow === null ? 'HL' : s.price < prevLow ? 'LL' : 'HL' });
+      prevLow = s.price;
+    }
+  }
+  return out;
+}
+
+/** Equal highs / lows: swing extremes clustered within tolerance (EQH / EQL pools). */
+export function equalLevels(
+  swings: Swing[],
+  lastPrice: number,
+  tolPct = 0.0006
+): { eqh: EqualLevel[]; eql: EqualLevel[] } {
+  const build = (kind: 'EQH' | 'EQL'): EqualLevel[] => {
+    const pts = swings.filter((s) => (kind === 'EQH' ? s.kind === 'high' : s.kind === 'low'));
+    const out: EqualLevel[] = [];
+    for (const p of pts) {
+      const hit = out.find((e) => Math.abs(e.price - p.price) / p.price <= tolPct);
+      if (hit) {
+        hit.price = (hit.price * hit.touches + p.price) / (hit.touches + 1);
+        hit.touches += 1;
+      } else {
+        out.push({ price: p.price, touches: 1, kind, side: p.price > lastPrice ? 'above' : 'below' });
+      }
+    }
+    return out
+      .filter((e) => e.touches >= 2)
+      .sort((a, b) => (kind === 'EQH' ? b.price - a.price : a.price - b.price));
+  };
+  return { eqh: build('EQH'), eql: build('EQL') };
+}
+
+/** Displacement candles: dominant-body thrusts larger than the median range. */
+export function detectDisplacement(candles: Candle[], lookback = 120): Displacement[] {
+  if (candles.length < 20) return [];
+  const win = candles.slice(-lookback);
+  const sorted = [...win].map((c) => c.h - c.l).sort((a, b) => a - b);
+  const medRange = sorted[Math.floor(sorted.length / 2)] || 1;
+  const out: Displacement[] = [];
+  for (const c of win) {
+    const range = c.h - c.l;
+    const body = Math.abs(c.c - c.o);
+    if (range <= 0) continue;
+    const bodyPct = body / range;
+    const sizePct = body / medRange;
+    if (bodyPct >= 0.7 && sizePct >= 1.8) {
+      out.push({
+        t: c.t,
+        direction: c.c > c.o ? 'up' : 'down',
+        bodyPct: Math.round(bodyPct * 100) / 100,
+        sizePct: Math.round(sizePct * 10) / 10
+      });
+    }
+  }
+  return out.slice(-6);
+}
+
+/** Premium / discount split of the active dealing range. */
+export function premiumDiscount(candles: Candle[], lookback = 60): PremiumDiscount | null {
+  if (!candles.length) return null;
+  const win = candles.slice(-lookback);
+  const high = Math.max(...win.map((c) => c.h));
+  const low = Math.min(...win.map((c) => c.l));
+  if (high === low) return null;
+  const c = candles[candles.length - 1].c;
+  const pos = (c - low) / (high - low);
+  return {
+    high,
+    low,
+    eq: (high + low) / 2,
+    posPct: Math.round(pos * 1000) / 1000,
+    zone: pos > 0.55 ? 'premium' : pos < 0.45 ? 'discount' : 'equilibrium'
+  };
+}
+
+/** Previous day / week high & low, bucketed from any candle granularity (UTC). */
+export function prevDayWeek(candles: Candle[], nowT: number): PrevHL[] {
+  const DAY = 86400;
+  const dayKey = (t: number): number => Math.floor(t / DAY);
+  // Epoch week boundary (1970-01-01 = Thursday) — consistent weekly buckets.
+  const weekKey = (t: number): number => Math.floor((t + 345600) / (7 * DAY));
+  const db = new Map<number, { h: number; l: number }>();
+  const wb = new Map<number, { h: number; l: number }>();
+  for (const c of candles) {
+    const dk = dayKey(c.t);
+    const d = db.get(dk);
+    if (!d) db.set(dk, { h: c.h, l: c.l });
+    else {
+      d.h = Math.max(d.h, c.h);
+      d.l = Math.min(d.l, c.l);
+    }
+    const wk = weekKey(c.t);
+    const w = wb.get(wk);
+    if (!w) wb.set(wk, { h: c.h, l: c.l });
+    else {
+      w.h = Math.max(w.h, c.h);
+      w.l = Math.min(w.l, c.l);
+    }
+  }
+  const out: PrevHL[] = [];
+  const pd = db.get(dayKey(nowT) - 1);
+  if (pd) {
+    out.push({ label: 'PDH', price: pd.h, t: 0 }, { label: 'PDL', price: pd.l, t: 0 });
+  }
+  const pw = wb.get(weekKey(nowT) - 1);
+  if (pw) {
+    out.push({ label: 'PWH', price: pw.h, t: 0 }, { label: 'PWL', price: pw.l, t: 0 });
+  }
+  return out;
+}
+
+/** Market Structure Shift: full-body close through the most recent opposing swing. */
+export function detectMSS(
+  candles: Candle[],
+  swings: Swing[],
+  regime: 'bullish' | 'bearish'
+): StructureEvent | null {
+  let last: StructureEvent | null = null;
+  let refHigh: Swing | null = null;
+  let refLow: Swing | null = null;
+  let si = 0;
+  for (let i = 0; i < candles.length; i++) {
+    while (si < swings.length && swings[si].index <= i) {
+      const s = swings[si++];
+      if (s.kind === 'high') refHigh = s;
+      else refLow = s;
+    }
+    const c = candles[i];
+    if (regime === 'bullish' && refLow && c.c < refLow.price) {
+      last = { t: c.t, price: refLow.price, direction: 'down', kind: 'mss', label: 'MSS ↓' };
+    } else if (regime === 'bearish' && refHigh && c.c > refHigh.price) {
+      last = { t: c.t, price: refHigh.price, direction: 'up', kind: 'mss', label: 'MSS ↑' };
+    }
+  }
+  return last;
 }
 
 function decay(ageSec: number, halfLifeHours = 24): number {
@@ -213,6 +363,23 @@ export function analyzeSMC(candles: Candle[]): SMC {
 
   const swingHighs = swings.filter((s) => s.kind === 'high').map((s) => s.price);
   const swingLows = swings.filter((s) => s.kind === 'low').map((s) => s.price);
+  const swingLabels = labelSwings(swings);
+  const { eqh, eql } = equalLevels(swings, lastC?.c ?? 0);
+  const lastMSS = detectMSS(candles, swings, regime);
+  const displacement = detectDisplacement(candles);
+  const pd = premiumDiscount(candles);
+  const prevHL = candles.length >= 30 ? prevDayWeek(candles, lastT) : [];
+
+  // Breaker / mitigation blocks: invalidated order blocks flip polarity.
+  const breakers: BreakerBlock[] = blocks
+    .filter((b) => b.removed)
+    .slice(-4)
+    .map((b) => ({
+      t: b.t,
+      price: b.price,
+      side: (b.side === 'buy' ? 'sell' : 'buy') as 'buy' | 'sell',
+      origin: (b.side === 'buy' ? 'bullish-ob' : 'bearish-ob') as 'bullish-ob' | 'bearish-ob'
+    }));
 
   // ── Score / bias ───────────────────────────────────────────────────────────
   let score = 0;
@@ -226,12 +393,26 @@ export function analyzeSMC(candles: Candle[]): SMC {
     const w = 20 * decay(Math.max(0, lastT - lastCHoCH.t), 48);
     score += lastCHoCH.direction === 'down' ? -w : w;
   }
+  if (lastMSS) {
+    const w = 14 * decay(Math.max(0, lastT - lastMSS.t), 36);
+    score += lastMSS.direction === 'down' ? -w : w;
+  }
+
+  const lastDisp = displacement.length ? displacement[displacement.length - 1] : null;
+  if (lastDisp && lastT - lastDisp.t <= 4 * 3600) {
+    score += lastDisp.direction === 'up' ? 10 : -10;
+  }
 
   if (lastC) {
     const top = Math.max(...swingHighs.slice(-2), -Infinity);
     const bot = Math.min(...swingLows.slice(-2), Infinity);
     if (Number.isFinite(top) && lastC.c > top) score += 15;
     if (Number.isFinite(bot) && lastC.c < bot) score -= 15;
+  }
+
+  if (lastC && pd) {
+    if (pd.zone === 'discount' && trend === 'bullish') score += 8;
+    if (pd.zone === 'premium' && trend === 'bearish') score -= 8;
   }
 
   if (lastC) {
@@ -255,8 +436,15 @@ export function analyzeSMC(candles: Candle[]): SMC {
 
   if (lastBOS) notes.push(`Last Break of Structure ${lastBOS.direction === 'up' ? '↑' : '↓'} @ ${lastBOS.price.toFixed(5)}.`);
   if (lastCHoCH) notes.push(`Last Change of Character ${lastCHoCH.direction === 'up' ? '↑' : '↓'} @ ${lastCHoCH.price.toFixed(5)} — momentum shift.`);
+  if (lastMSS) notes.push(`Market Structure Shift ${lastMSS.direction === 'up' ? '↑' : '↓'} confirmed by close through ${lastMSS.price.toFixed(5)}.`);
   if (regime === 'bullish' && !lastCHoCH) notes.push('Buyers in control; structure intact above.');
   if (regime === 'bearish' && !lastCHoCH) notes.push('Sellers in control; structure intact below.');
+  if (eqh.length) notes.push(`Equal highs (EQH) at ${eqh[0].price.toFixed(5)} ×${eqh[0].touches} — buy-side liquidity resting above.`);
+  if (eql.length) notes.push(`Equal lows (EQL) at ${eql[0].price.toFixed(5)} ×${eql[0].touches} — sell-side liquidity resting below.`);
+  if (pd) notes.push(`Price in ${pd.zone} of the dealing range (${Math.round(pd.posPct * 100)}% between ${pd.low.toFixed(5)} and ${pd.high.toFixed(5)}).`);
+  if (lastDisp) notes.push(`Displacement ${lastDisp.direction === 'up' ? '↑' : '↓'} — body ${Math.round(lastDisp.bodyPct * 100)}% of a ${lastDisp.sizePct}× median-range candle.`);
+  if (breakers.length) notes.push(`${breakers.length} breaker/mitigation block${breakers.length > 1 ? 's' : ''} from invalidated order blocks.`);
+  for (const h of prevHL) notes.push(`${h.label} ${h.price.toFixed(5)}.`);
 
   return {
     trend,
@@ -265,13 +453,21 @@ export function analyzeSMC(candles: Candle[]): SMC {
     trendLabel: label,
     lastBOS,
     lastCHoCH,
+    lastMSS,
     swingHighs,
     swingLows,
-    orderBlocks: blocks,
+    swingLabels: swingLabels.slice(-10),
+    orderBlocks: blocks.slice(-8),
+    breakers,
     demandZones,
     supplyZones,
     liquidity,
+    equalHighs: eqh.slice(0, 3),
+    equalLows: eql.slice(0, 3),
     stopHunts,
+    displacement,
+    pd,
+    prevHL,
     notes
   };
 }

@@ -1,6 +1,6 @@
 // ── Shared domain types for the FX market-intelligence platform ──────────────
 
-export type Granularity = '15m' | '1h' | '4h' | '1d';
+export type Granularity = '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '1d' | '1w';
 
 export interface Candle {
   t: number; // unix seconds (bar open time)
@@ -26,11 +26,16 @@ export interface Swing {
   index: number;
 }
 
+/** Swing with fractal classification vs the previous same-kind swing. */
+export interface SwingLabel extends Swing {
+  label: 'HH' | 'HL' | 'LH' | 'LL';
+}
+
 export interface StructureEvent {
   t: number;
   price: number;
   direction: Direction;
-  kind: 'bos' | 'choch';
+  kind: 'bos' | 'choch' | 'mss';
   label: string;
 }
 
@@ -41,6 +46,14 @@ export interface OrderBlock {
   removed: boolean;
 }
 
+/** Order block that failed and flipped polarity (breaker / mitigation block). */
+export interface BreakerBlock {
+  t: number;
+  price: number;
+  side: 'buy' | 'sell';
+  origin: 'bullish-ob' | 'bearish-ob';
+}
+
 export interface LiquidityZone {
   price: number;
   weight: number;
@@ -48,10 +61,41 @@ export interface LiquidityZone {
   label: string;
 }
 
+/** Equal highs / lows pool with touch count. */
+export interface EqualLevel {
+  price: number;
+  touches: number;
+  kind: 'EQH' | 'EQL';
+  side: 'above' | 'below'; // relative to current price
+}
+
 export interface StopHunt {
   t: number;
   price: number;
   side: 'high' | 'low';
+}
+
+/** Displacement candle: outsized body leaving a level. */
+export interface Displacement {
+  t: number;
+  direction: Direction;
+  bodyPct: number;  // body / range
+  sizePct: number;  // body / price
+}
+
+/** Premium / discount decomposition of the active dealing range. */
+export interface PremiumDiscount {
+  high: number;
+  low: number;
+  eq: number;
+  posPct: number; // 0..1 where price sits between low(0) and high(1)
+  zone: 'premium' | 'discount' | 'equilibrium';
+}
+
+export interface PrevHL {
+  label: 'PDH' | 'PDL' | 'PWH' | 'PWL';
+  price: number;
+  t: number;
 }
 
 export interface SMC {
@@ -61,13 +105,21 @@ export interface SMC {
   trendLabel: string;
   lastBOS: StructureEvent | null;
   lastCHoCH: StructureEvent | null;
+  lastMSS: StructureEvent | null;
   swingHighs: number[];
   swingLows: number[];
+  swingLabels: SwingLabel[];
   orderBlocks: OrderBlock[];
+  breakers: BreakerBlock[];
   demandZones: Array<[number, number]>;
   supplyZones: Array<[number, number]>;
   liquidity: LiquidityZone[];
+  equalHighs: EqualLevel[];
+  equalLows: EqualLevel[];
   stopHunts: StopHunt[];
+  displacement: Displacement[];
+  pd: PremiumDiscount | null;
+  prevHL: PrevHL[];
   notes: string[];
 }
 
@@ -90,6 +142,58 @@ export interface CRT {
   bias: 'long' | 'short' | 'neutral';
   score: number;          // -100..100
   notes: string[];
+  /** Condensed phase-model state (embedded in snapshot/pair payloads). */
+  phase?: {
+    status: CRTStatus;
+    direction: 'bullish' | 'bearish' | 'neutral';
+    manipulation: boolean;
+    sweep: 'high' | 'low' | null;
+    reclaim: boolean;
+    displacement: boolean;
+    confirmation: boolean;
+    score: number;
+  };
+}
+
+export type CRTStatus = 'developing' | 'confirming' | 'confirmed' | 'invalidated';
+
+/** Candle-range-theory phase model over the last completed range + current bar. */
+export interface CRTPhase {
+  status: CRTStatus;
+  direction: 'bullish' | 'bearish' | 'neutral';
+  score: number; // -100..100
+  rangeHigh: number | null;
+  rangeLow: number | null;
+  rangeMid: number | null;
+  manipulation: boolean;
+  sweep: 'high' | 'low' | null;
+  reclaim: boolean;
+  displacement: boolean;
+  confirmation: boolean;
+  invalidated: boolean;
+  notes: string[];
+}
+
+export type IndicatorSignal = 'buy' | 'sell' | 'neutral';
+
+export interface IndicatorReading {
+  key: string;
+  name: string;
+  value: string;
+  signal: IndicatorSignal;
+  strength: number; // 0..1 conviction
+  note: string;
+}
+
+export interface IndicatorBundle {
+  score: number; // -100..100
+  label: string;
+  bull: number;
+  bear: number;
+  neutral: number;
+  readings: IndicatorReading[];
+  drivers: string[];
+  atr: number | null;
 }
 
 export interface ConfluenceFactor {
@@ -127,6 +231,40 @@ export interface StrengthResult {
   notes: string[];
 }
 
+export interface SignalTag {
+  label: string;  // 'Buy' | 'Strong Buy' | 'Sell' | 'Strong Sell' | 'Neutral'
+  score: number;  // -100..100
+}
+
+export interface MTFRow {
+  tf: Granularity;
+  indicators: SignalTag;
+  smc: SignalTag;
+  crt: SignalTag & { status: CRTStatus };
+  overall: SignalTag;
+}
+
+export interface PairMTF {
+  pair: Pair;
+  rows: MTFRow[];
+  overall: SignalTag;
+  generatedAt: number;
+}
+
+/** One timeframe column of the multi-TF currency-strength matrix. */
+export interface StrengthTFColumn {
+  tf: string;
+  scores: Record<string, number | null>; // currency code → -100..100
+  deltas: Record<string, number | null>; // momentum vs previous window
+}
+
+export interface StrengthMatrix {
+  updatedAt: number;
+  sources: string[];
+  tfs: StrengthTFColumn[];
+  notes: string[];
+}
+
 export interface PairAnalysis {
   pair: Pair;
   interval: Granularity;
@@ -134,10 +272,15 @@ export interface PairAnalysis {
   price: number;
   change1h: number | null;
   change24h: number | null;
+  atr: number | null;
+  spread: number | null;
+  volatility: 'low' | 'normal' | 'high';
   source: string;
   smc: SMC;
   crt: CRT;
+  crtPhase: CRTPhase;
   confluence: Confluence;
+  indicators: IndicatorBundle;
   error: string | null;
 }
 
