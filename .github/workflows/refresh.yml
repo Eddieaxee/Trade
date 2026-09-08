@@ -1,0 +1,29 @@
+# 15-minute cache warm-up for the deployed Vercel app.
+# Requires one repository secret: REFRESH_URL — the full refresh endpoint URL
+# including the secret query param, e.g.
+#   https://<your-app>.vercel.app/api/cron/refresh?secret=<CRON_SECRET>
+# If the secret is not set, the job exits successfully and does nothing.
+# Note: Vercel Hobby allows only daily cron jobs, so this workflow provides
+# the 15-minute warm-up cadence on the free plan.
+
+name: Scheduled cache warm-up
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /api/cron/refresh
+        env:
+          REFRESH_URL: ${{ secrets.REFRESH_URL }}
+        run: |
+          if [ -z "$REFRESH_URL" ]; then
+            echo "REFRESH_URL secret not set — skipping warm-up ping"
+            exit 0
+          fi
+          curl -fsS --max-time 55 "$REFRESH_URL"
+          echo "Warm-up ping completed"

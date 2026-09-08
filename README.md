@@ -21,7 +21,7 @@ A serverless-ready Next.js platform that turns public, keyless market data into
 - TypeScript (strict)
 - Zero charting dependencies — a hand-rolled SVG sparkline keeps bundles tiny
 - Optional Upstash Redis REST shared cache for serverless warm-ups
-- `vercel.json` cron: refreshes all intervals every 15 minutes
+- Warm-ups: daily `vercel.json` cron (Hobby-compliant) + 15-minute GitHub Actions ping (`.github/workflows/refresh.yml`)
 
 ## Data providers (all keyless by default)
 
@@ -53,6 +53,17 @@ Production build: `npm run build && npm start`. Type check: `npm run typecheck`.
 | `TTL_*` | cache TTL overrides (seconds) |
 
 All settings are optional — the dashboard works with none of them set.
+### Keep-warm scheduling (Vercel Hobby)
+
+Vercel Hobby allows only **daily** cron jobs, so the 15-minute warm-up cadence
+runs via GitHub Actions (free for public repos):
+
+1. On Vercel, set `CRON_SECRET` (any long random string).
+2. In this repo → Settings → Secrets and variables → Actions, add `REFRESH_URL`
+   = `https://<your-app>.vercel.app/api/cron/refresh?secret=<CRON_SECRET>`.
+3. The workflow (`.github/workflows/refresh.yml`) then pings the endpoint every
+   15 minutes; without the secret it skips harmlessly. If GitHub pauses the
+   schedule after ~60 days without repo activity, any push re-enables it.
 
 ## API surface
 
@@ -60,7 +71,7 @@ All settings are optional — the dashboard works with none of them set.
 - `GET /api/analysis/pair?pair=EURUSD&interval=1h` — per-pair analysis bundle
 - `GET /api/candles?pair=EURUSD&interval=1h` — raw OHLC
 - `GET /api/rates` — EUR-based reference-rate series
-- `GET /api/cron/refresh` — scheduled warm-up (auth: `Bearer <CRON_SECRET>`)
+- `GET /api/cron/refresh` — scheduled warm-up (auth: `Bearer <CRON_SECRET>` or `?secret=<CRON_SECRET>`)
 
 ## Methodology notes
 
