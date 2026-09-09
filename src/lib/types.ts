@@ -282,7 +282,25 @@ export interface PairAnalysis {
   crtPhase: CRTPhase;
   confluence: Confluence;
   indicators: IndicatorBundle;
+  tradePlan: TradePlan | null;
   error: string | null;
+}
+
+/** Suggested trade plan — informational only, derived from ATR + structure levels. */
+export interface TradePlan {
+  direction: 'long' | 'short' | 'none';
+  confidence: number;          // 0..100 from |confluence|
+  entry: number;               // live price
+  entryZoneLow: number;        // retest zone (confluence support/resistance aware)
+  entryZoneHigh: number;
+  stopLoss: number;
+  tp1: number;
+  tp2: number;
+  tp3: number;
+  rr1: number;                 // reward:risk at each TP
+  rr2: number;
+  rr3: number;
+  basis: string;               // short human explanation of the numbers
 }
 
 export interface MarketSnapshot {

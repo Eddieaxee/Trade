@@ -102,6 +102,8 @@ export default function MarketSessions() {
   const utc = new Date(now.getTime());
   const utcHh = String(utc.getUTCHours()).padStart(2, '0');
   const utcMm = String(utc.getUTCMinutes()).padStart(2, '0');
+  // West Africa Time (UTC+1, no DST)
+  const watHh = String((utc.getUTCHours() + 1) % 24).padStart(2, '0');
 
   const chip = (s: SessionInfo) => {
     const cls =
@@ -122,6 +124,7 @@ export default function MarketSessions() {
   return (
     <div className="market-sessions" data-open={anyOpen ? '1' : '0'}>
       <span className="utc-pill">UTC {utcHh}:{utcMm}</span>
+      <span className="utc-pill wat">WAT {watHh}:{utcMm}</span>
       {sessions.map(chip)}
       {!anyOpen && (
         <span className={`session-banner ${opening || closing ? 'session-soon' : 'session-closed'}`}>

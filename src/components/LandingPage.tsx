@@ -2,14 +2,19 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import HeroCanvas from '@/components/HeroCanvas';
-import CartoonFace from '@/components/CartoonFace';
+import dynamic from 'next/dynamic';
 import { Logo } from '@/components/Logo';
+
+/** 3D cartoon currency scene — client-only (WebGL). */
+const HeroCanvas3D = dynamic(() => import('@/components/HeroCanvas3D'), {
+  ssr: false,
+  loading: () => <div style={{ width: '100%', height: '100%' }} />
+});
 
 /**
  * Landing page — futuristic, minimalist, single-screen hero with:
- * - animated 3D-perspective grid canvas
- * - cartoon face that follows the mouse (desktop)
+ * - true 3D cartoon currency scene (EUR vs USD standoff, orbiting coins)
+ * - coins with eyes that follow the mouse (desktop)
  * - start button → dashboard
  * - no login, no auth, no friction
  */
@@ -20,12 +25,7 @@ export default function LandingPage() {
     <div className="landing">
       {/* 3D hero background */}
       <div className="hero-bg">
-        <HeroCanvas />
-      </div>
-
-      {/* Floating cartoon face in the hero */}
-      <div className="hero-face">
-        <CartoonFace />
+        <HeroCanvas3D />
       </div>
 
       {/* Vignette overlay */}

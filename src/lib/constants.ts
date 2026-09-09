@@ -30,13 +30,8 @@ export function allPairs(): Pair[] {
   return out;
 }
 
-/** Default watchlist analysed in overview tables. */
-export const WATCHLIST: Pair[] = [
-  'EURUSD', 'GBPUSD', 'USDJPY', 'USDCHF',
-  'AUDUSD', 'USDCAD', 'NZDUSD',
-  'EURGBP', 'EURJPY', 'GBPJPY',
-  'EURCHF', 'EURCAD'
-].map(mkPair);
+/** Default watchlist analysed in overview tables — all 28 majors + minors. */
+export const WATCHLIST: Pair[] = allPairs();
 
 /** Star topology used to derive every cross from 7 candle fetches. */
 export const STAR_PAIRS: Pair[] = [
@@ -48,7 +43,7 @@ export const DEFAULT_INTERVAL: Granularity = '1h';
 /** Every timeframe the data providers can serve. */
 export const TF_ALL: Granularity[] = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w'];
 /** Timeframes shown on the main analysis pages (selector). */
-export const TF_MAIN: Granularity[] = ['5m', '15m', '30m', '1h', '4h', '1d', '1w'];
+export const TF_MAIN: Granularity[] = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w'];
 /** Legacy snapshot intervals (dashboard overview + cron). */
 export const INTERVALS: Granularity[] = ['15m', '1h', '4h', '1d'];
 /** Rows of the multi-timeframe pair table. */

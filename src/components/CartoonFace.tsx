@@ -63,12 +63,15 @@ export default function CartoonFace() {
     };
   }, []);
 
-  const ex = (smooth.x - 0.5) * 7;
-  const ey = (smooth.y - 0.5) * 4;
+  const ex = (smooth.x - 0.5) * 8;   // whole-eye drift (±4 units in a 120 box)
+  const ey = (smooth.y - 0.5) * 5;
+  const px = (smooth.x - 0.5) * 13;  // pupil travel (±6.5 units) — clearly visible
+  const py = (smooth.y - 0.5) * 8;
+  const tilt = (smooth.x - 0.5) * 7; // face tilts toward the cursor (deg)
 
   return (
     <div className="cartoon-face" aria-hidden="true">
-      <svg viewBox="0 0 120 120" width="100%" height="100%">
+      <svg viewBox="0 0 120 120" width="100%" height="100%" style={{ transform: `rotate(${tilt}deg)`, transition: 'transform 0.15s linear' }}>
         <defs>
           <radialGradient id="faceGrad" cx="40%" cy="35%" r="65%">
             <stop offset="0%" stopColor="#1a2030" />
@@ -84,16 +87,22 @@ export default function CartoonFace() {
 
         {/* Left eye */}
         <g transform={`translate(${ex}, ${ey})`}>
-          <ellipse cx="42" cy="52" rx="9" ry={blink ? 1 : 10} fill="#0b0e14" stroke="#3aa5ff" strokeWidth="1.2" />
-          {!blink && <circle cx={42 + ex * 0.35} cy={52 + ey * 0.35} r="4" fill="#3aa5ff" />}
-          {!blink && <circle cx={43 + ex * 0.35} cy={50 + ey * 0.35} r="1.5" fill="#fff" />}
+          <ellipse cx="42" cy="52" rx="9.5" ry={blink ? 1 : 10} fill="#0b0e14" stroke="#3aa5ff" strokeWidth="1.2" />
+          {!blink && <circle cx={42 + px} cy={52 + py} r="4.2" fill="#3aa5ff" />}
+          {!blink && <circle cx={43.4 + px} cy={49.6 + py} r="1.6" fill="#fff" />}
         </g>
 
         {/* Right eye */}
         <g transform={`translate(${ex}, ${ey})`}>
-          <ellipse cx="78" cy="52" rx="9" ry={blink ? 1 : 10} fill="#0b0e14" stroke="#3aa5ff" strokeWidth="1.2" />
-          {!blink && <circle cx={78 + ex * 0.35} cy={52 + ey * 0.35} r="4" fill="#3aa5ff" />}
-          {!blink && <circle cx={79 + ex * 0.35} cy={50 + ey * 0.35} r="1.5" fill="#fff" />}
+          <ellipse cx="78" cy="52" rx="9.5" ry={blink ? 1 : 10} fill="#0b0e14" stroke="#3aa5ff" strokeWidth="1.2" />
+          {!blink && <circle cx={78 + px} cy={52 + py} r="4.2" fill="#3aa5ff" />}
+          {!blink && <circle cx={79.4 + px} cy={49.6 + py} r="1.6" fill="#fff" />}
+        </g>
+
+        {/* Brows lift when looking up, furrow when looking down */}
+        <g transform={`translate(${ex * 0.6}, ${ey * 0.6})`} opacity="0.85">
+          <path d={smooth.y < 0.45 ? 'M 34 36 Q 42 31 50 36' : 'M 34 39 Q 42 37 50 39'} fill="none" stroke="#3aa5ff" strokeWidth="1.8" strokeLinecap="round" />
+          <path d={smooth.y < 0.45 ? 'M 70 36 Q 78 31 86 36' : 'M 70 39 Q 78 37 86 39'} fill="none" stroke="#3aa5ff" strokeWidth="1.8" strokeLinecap="round" />
         </g>
 
         {/* Mouth — smiles when looking down, frowns when looking up */}

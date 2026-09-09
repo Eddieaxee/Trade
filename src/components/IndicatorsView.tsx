@@ -81,17 +81,17 @@ export default function IndicatorsView({ a }: { a: PairAnalysis }) {
         <div className="hbar">
           <div className="row">
             <span className="lb">Bullish</span>
-            <span className="track"><span className="f" style={{ left: '50%', width: `${(ind.bull / Math.max(1, ind.readings.length)) * 100}%`, background: 'var(--up)' }} /></span>
+            <span className="track"><span className="mid" /><span className="f" style={{ left: '50%', width: `${Math.min(50, (ind.bull / Math.max(1, ind.readings.length)) * 50)}%`, background: 'var(--up)' }} /></span>
             <span className="vl tone-up">{ind.bull}</span>
           </div>
           <div className="row">
             <span className="lb">Bearish</span>
-            <span className="track"><span className="f" style={{ right: '50%', width: `${(ind.bear / Math.max(1, ind.readings.length)) * 100}%`, background: 'var(--down)' }} /></span>
+            <span className="track"><span className="mid" /><span className="f" style={{ right: '50%', width: `${Math.min(50, (ind.bear / Math.max(1, ind.readings.length)) * 50)}%`, background: 'var(--down)' }} /></span>
             <span className="vl tone-down">{ind.bear}</span>
           </div>
           <div className="row">
             <span className="lb">Neutral</span>
-            <span className="track"><span className="f" style={{ left: '50%', width: `${(ind.neutral / Math.max(1, ind.readings.length)) * 100}%`, background: 'var(--muted)' }} /></span>
+            <span className="track"><span className="mid" /><span className="f" style={{ left: '50%', width: `${Math.min(50, (ind.neutral / Math.max(1, ind.readings.length)) * 50)}%`, background: 'var(--muted)' }} /></span>
             <span className="vl tone-muted">{ind.neutral}</span>
           </div>
         </div>

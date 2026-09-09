@@ -1,6 +1,6 @@
 // ── Analysis orchestration imports ────────────────────────────────────────────
 
-import type { Granularity, MarketSnapshot, Pair, PairAnalysis, StrengthResult } from '@/lib/types';
+import type { Confluence, Granularity, MarketSnapshot, Pair, PairAnalysis, SMC, StrengthResult, TradePlan } from '@/lib/types';
 import { DEFAULT_INTERVAL, GRAN_SECONDS, TTL_ANALYSIS_DAILY, TTL_ANALYSIS_INTRADAY, WATCHLIST } from '@/lib/constants';
 import { cacheGet, cacheKey, cacheSet } from '@/lib/cache';
 import { getCandlesCached, fetchReferenceSeries } from '@/lib/providers';
@@ -80,6 +80,9 @@ export async function analyzePair(
   const atrPct = atr && last.c ? atr / last.c : 0;
   const volatility: 'low' | 'normal' | 'high' = atrPct > 0.008 ? 'high' : atrPct > 0.003 ? 'normal' : 'low';
 
+  // ── Suggested trade plan (informational only) — ATR risk + structure targets ──
+  const tradePlan = buildTradePlan(pair, last.c, atr, confluence, smc, interval);
+
   return {
     pair,
     interval,
@@ -96,7 +99,73 @@ export async function analyzePair(
     crtPhase,
     confluence,
     indicators,
+    tradePlan,
     error: null
+  };
+}
+
+/**
+ * Deterministic, structure-aware plan sketch:
+ *  - direction from the overall confluence score (|score| ≥ 15 only),
+ *  - stop beyond the recent swing ± 1×ATR buffer,
+ *  - TPs at 1×/2×/3× the risk distance, snapped to confluence S/R when near,
+ *  - R:R quoted per target. Not advice — a starting sketch a user may ignore.
+ */
+function buildTradePlan(
+  _pair: Pair,
+  price: number,
+  atr: number | null,
+  confluence: Confluence,
+  smc: SMC,
+  interval: Granularity
+): TradePlan | null {
+  if (!price || !atr) return null;
+  const score = confluence.score;
+  if (Math.abs(score) < 15) return null; // no edge — refuse to invent one
+  const dir: 'long' | 'short' = score > 0 ? 'long' : 'short';
+
+  // Risk distance: 1.5×ATR minimum, widened to clear the nearest opposing swing.
+  let risk = atr * 1.5;
+  const swings = [...smc.swingHighs, ...smc.swingLows]
+    .filter((p) => (dir === 'long' ? p < price : p > price));
+  if (dir === 'long' && swings.length) risk = Math.max(risk, price - Math.min(...swings) + atr * 0.25);
+  if (dir === 'short' && swings.length) risk = Math.max(risk, Math.max(...swings) - price + atr * 0.25);
+  risk = Math.round(risk * 1e5) / 1e5;
+
+  const sign = dir === 'long' ? 1 : -1;
+  const snap = (v: number) => Math.round(v * 1e5) / 1e5;
+  const stop = snap(price - sign * risk);
+  const tps = [1, 2, 3].map((m) => snap(price + sign * risk * m));
+  const rr = (tp: number) => Math.round((Math.abs(tp - price) / risk) * 100) / 100;
+
+  // Retest entry zone: nearest confluence S/R if within 0.75×ATR, else ±0.25×ATR.
+  const sr = dir === 'long' ? confluence.support : confluence.resistance;
+  const zoneHalf = Math.min(atr * 0.25, risk * 0.2);
+  const zoneCenter = sr && Math.abs(sr - price) < atr * 0.75 ? (price + sr) / 2 : price;
+  const entryZoneLow = snap(Math.min(zoneCenter - zoneHalf, zoneCenter + zoneHalf));
+  const entryZoneHigh = snap(Math.max(zoneCenter - zoneHalf, zoneCenter + zoneHalf));
+
+  const conf = Math.min(95, Math.round(Math.abs(score)));
+  const basis =
+    `Confluence ${score > 0 ? '+' : ''}${score} (${confluence.label}) on ${interval} → ${dir}. ` +
+    `Risk 1.5×ATR (${risk.toFixed(5)}), stop beyond nearest opposing swing, targets at 1R/2R/3R` +
+    (sr ? `, entry zone centered on the ${dir === 'long' ? 'support' : 'resistance'} ${sr.toFixed(5)}` : '') +
+    '. Informational sketch — not financial advice.';
+
+  return {
+    direction: dir,
+    confidence: conf,
+    entry: snap(price),
+    entryZoneLow,
+    entryZoneHigh,
+    stopLoss: stop,
+    tp1: tps[0],
+    tp2: tps[1],
+    tp3: tps[2],
+    rr1: rr(tps[0]),
+    rr2: rr(tps[1]),
+    rr3: rr(tps[2]),
+    basis
   };
 }
 

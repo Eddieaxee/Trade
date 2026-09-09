@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import type { Granularity, MarketSnapshot } from '@/lib/types';
 import { INTERVALS } from '@/lib/constants';
-import { fmtAgo, fmtClock, fmtPrice } from '@/lib/utils';
+import { fmtAgo, fmtClock, fmtPct, fmtPrice } from '@/lib/utils';
 import StrengthBoard from '@/components/StrengthBoard';
 import PairTable from '@/components/PairTable';
 import SMCCard from '@/components/SMCCard';
@@ -111,37 +111,39 @@ export default function Dashboard() {
           <PairTable snapshot={snapshot} />
           {sel && (
             <div style={{ marginTop: 14 }}>
-              <div className="dashboard-title-row" style={{ marginBottom: 8 }}>
-                <h3 className="section-label" style={{ margin: 0 }}>
-                  {sel.pair.symbol} · {sel.source} · {sel.interval}{sel.confluence.support || sel.confluence.resistance ? ` · S ${sel.confluence.support ?? '—'} / R ${sel.confluence.resistance ?? '—'}` : ''}
-                </h3>
-                <select
-                  className="pair-select"
-                  value={selected ?? sel.pair.symbol}
-                  onChange={(e) => setSelected(e.target.value)}
-                  aria-label="Pick a pair to inspect"
-                >
-                  {snapshot.pairs.map((p) => (
-                    <option key={p.pair.symbol} value={p.pair.symbol}>{p.pair.symbol}</option>
-                  ))}
-                </select>
+              <div className="inspect-head">
+                <div className="inspect-id">
+                  <h3 className="section-label" style={{ margin: 0, fontSize: 18 }}>{sel.pair.symbol}</h3>
+                  <span className="chip gray">{sel.interval}</span>
+                  <span className="chip blue">{sel.price !== null ? fmtPrice(sel.price) : '—'}</span>
+                  <span className={`chip ${sel.change1h !== null && sel.change1h >= 0 ? 'green' : 'red'}`}>{fmtPct(sel.change1h)} 1h</span>
+                </div>
+                <div className="inspect-right">
+                  <span className="pill" title="Data source">{sel.source}</span>
+                  <select
+                    className="pair-select"
+                    value={selected ?? sel.pair.symbol}
+                    onChange={(e) => setSelected(e.target.value)}
+                    aria-label="Pick a pair to inspect"
+                  >
+                    {snapshot.pairs.map((p) => (
+                      <option key={p.pair.symbol} value={p.pair.symbol}>{p.pair.symbol}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="inspect-stats">
+                <div className="strong-card"><div className="code">Support</div><div className="strong-delta">{sel.confluence.support ? fmtPrice(sel.confluence.support) : '—'}</div></div>
+                <div className="strong-card"><div className="code">Resistance</div><div className="strong-delta">{sel.confluence.resistance ? fmtPrice(sel.confluence.resistance) : '—'}</div></div>
+                <div className="strong-card"><div className="code">SMC</div><div className="strong-delta">{sel.smc.score > 0 ? '+' : ''}{sel.smc.score}</div></div>
+                <div className="strong-card"><div className="code">CRT</div><div className="strong-delta">{sel.crt.score > 0 ? '+' : ''}{sel.crt.score}</div></div>
+                <div className="strong-card"><div className="code">Indicators</div><div className={`strong-delta ${sel.indicators.score >= 0 ? 'tone-up' : 'tone-down'}`}>{sel.indicators.score > 0 ? '+' : ''}{sel.indicators.score}</div></div>
+                <div className="strong-card"><div className="code">Updated</div><div className="strong-delta">{fmtAgo(snapshot.generatedAt)} ago</div></div>
               </div>
               <div className="cards-4">
                 <SMCCard analysis={sel} />
                 <CRTCard analysis={sel} />
                 <IndicatorsCard analysis={sel} />
-                <div className="panel">
-                  <h3>Market snapshot</h3>
-                  <div className="snapshot-grid">
-                    <span>Timeframe</span><span className="pill">{sel.interval}</span>
-                    <span>Source</span><span className="pill">{sel.source}</span>
-                    <span>SMC</span><b>{sel.smc.score > 0 ? '+' : ''}{sel.smc.score}</b>
-                    <span>CRT</span><b>{sel.crt.score > 0 ? '+' : ''}{sel.crt.score}</b>
-                    <span>Indicators</span><b className={sel.indicators.score >= 0 ? 'up-text' : 'down-text'}>{sel.indicators.score > 0 ? '+' : ''}{sel.indicators.score}</b>
-                    <span>Generated</span><b>{fmtAgo(snapshot.generatedAt)} ago</b>
-                  </div>
-                  <p className="disclaimer">Sentiment-style analytics over historical candles. Not investment advice; this dashboard never routes or executes orders.</p>
-                </div>
               </div>
             </div>
           )}

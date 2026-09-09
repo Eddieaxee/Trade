@@ -105,6 +105,44 @@ export default function PairDashboard({ a, mtf }: { a: PairAnalysis; mtf: PairMT
 
       <MTFTable mtf={mtf} />
 
+      {a.tradePlan && (
+        <div className="panel">
+          <h3>
+            Suggested trade plan —{' '}
+            <span style={{ color: a.tradePlan.direction === 'long' ? 'var(--up)' : 'var(--down)' }}>
+              {a.tradePlan.direction === 'long' ? 'LONG' : 'SHORT'}
+            </span>{' '}
+            <span className="chip gray" style={{ marginLeft: 6 }}>confidence {a.tradePlan.confidence}/100</span>
+            <span className="chip blue" style={{ marginLeft: 6 }}>{a.interval}</span>
+          </h3>
+          <div className="plan-grid">
+            <div className="plan-cell">
+              <div className="plan-k">Entry (live)</div>
+              <div className="plan-v">{fmtPrice(a.tradePlan.entry)}</div>
+              <div className="plan-s">zone {fmtPrice(a.tradePlan.entryZoneLow)} – {fmtPrice(a.tradePlan.entryZoneHigh)}</div>
+            </div>
+            <div className="plan-cell risk">
+              <div className="plan-k">Stop loss</div>
+              <div className="plan-v">{fmtPrice(a.tradePlan.stopLoss)}</div>
+              <div className="plan-s">risk {fmtPrice(Math.abs(a.tradePlan.entry - a.tradePlan.stopLoss))}</div>
+            </div>
+            <div className="plan-cell">
+              <div className="plan-k">TP1 · {a.tradePlan.rr1}R</div>
+              <div className="plan-v tone-up">{fmtPrice(a.tradePlan.tp1)}</div>
+            </div>
+            <div className="plan-cell">
+              <div className="plan-k">TP2 · {a.tradePlan.rr2}R</div>
+              <div className="plan-v tone-up">{fmtPrice(a.tradePlan.tp2)}</div>
+            </div>
+            <div className="plan-cell">
+              <div className="plan-k">TP3 · {a.tradePlan.rr3}R</div>
+              <div className="plan-v tone-up">{fmtPrice(a.tradePlan.tp3)}</div>
+            </div>
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 8 }}>{a.tradePlan.basis}</div>
+        </div>
+      )}
+
       <div className="panel">
         <h3>Why this conclusion?</h3>
         <ul className="note-list">

@@ -8,7 +8,9 @@ const LINKS = [
   { href: '/strength', label: 'Currency Strength' },
   { href: '/smc', label: 'SMC' },
   { href: '/indicators', label: 'Indicators' },
-  { href: '/crt', label: 'CRT' }
+  { href: '/crt', label: 'CRT' },
+  { href: '/news', label: 'News Room' },
+  { href: '/guide', label: 'Guide' }
 ];
 
 /** Top navigation — the four analysis systems each get a dedicated page. */

@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import type { StrengthMatrix, StrengthTFColumn } from '@/lib/types';
 import { CURRENCIES } from '@/lib/constants';
@@ -89,7 +90,38 @@ function Histogram({ col }: { col: StrengthTFColumn }) {
   );
 }
 
-export default function StrengthView({ matrix }: { matrix: StrengthMatrix }) {
+export default function StrengthView({ initial }: { initial: StrengthMatrix }) {
+  const [matrix, setMatrix] = useState<StrengthMatrix>(initial);
+  const [refreshing, setRefreshing] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState(Date.now());
+
+  // Live polling — re-fetch the matrix every 60s so scores stay current.
+  useEffect(() => {
+    let alive = true;
+    const tick = async () => {
+      setRefreshing(true);
+      try {
+        const res = await fetch('/api/analysis/matrix', { cache: 'no-store' });
+        if (res.ok) {
+          const next = (await res.json()) as StrengthMatrix;
+          if (alive && next?.tfs?.length) {
+            setMatrix(next);
+            setUpdatedAt(Date.now());
+          }
+        }
+      } catch {
+        /* keep last good matrix */
+      } finally {
+        if (alive) setRefreshing(false);
+      }
+    };
+    const id = setInterval(tick, 60_000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, []);
+
   const latest = matrix.tfs[matrix.tfs.length - 1];
   return (
     <>
