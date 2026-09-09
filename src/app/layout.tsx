@@ -1,50 +1,31 @@
-import type { Metadata } from 'next';
-import Link from 'next/link';
-import NavBar from '@/components/NavBar';
-import MarketSessions from '@/components/MarketSessions';
-import './globals.css';
+import type { Metadata } from "next";
+// @ts-ignore: allow importing global CSS without type declarations
+import "./globals.css";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 export const metadata: Metadata = {
-  title: 'FX Pulse — Forex Market Intelligence',
+  title: "FX Pulse — Forex Market Intelligence",
   description:
-    'Dedicated Currency Strength, Smart Money Concepts, Indicators and Candle Range Theory analysis for FX. Multi-timeframe, real market data — analysis only, never a trading terminal.',
-  metadataBase: new URL('https://forex-intelligence.example'),
-  icons: { icon: '/favicon.svg' },
+    "Currency-strength, Smart Money Concepts, Candle Range Theory and technical-confluence dashboards for the FX market. Analysis only — not a trading terminal.",
+  metadataBase: new URL("https://forex-intelligence.example"),
   openGraph: {
-    title: 'FX Pulse',
-    description: 'Currency Strength · SMC · Indicators · CRT — dedicated analysis pages'
-  }
+    title: "FX Pulse",
+    description: "SMC · CRT · Currency Strength · Confluence dashboards",
+  },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en">
       <body>
-        <header className="app-header">
-          <div className="brand">
-            <Link href="/" style={{ color: 'inherit' }}>
-              <span className="fx">FX</span> Pulse
-            </Link>
-            <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--muted)' }}>
-              {' '}· forex intelligence platform
-            </span>
-          </div>
-          <NavBar />
-          <MarketSessions />
-        </header>
         {children}
-        <footer
-          style={{
-            borderTop: '1px solid var(--border)',
-            marginTop: 32,
-            padding: '14px 22px 20px',
-            fontSize: 11,
-            color: 'var(--muted)'
-          }}
-        >
-          FX Pulse · analysis built from real keyless market data (Yahoo Finance OHLC · Frankfurter/ECB · ER-API ·
-          Twelve Data when configured). Research tooling only — not investment advice; no orders are routed or executed.
-        </footer>
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
