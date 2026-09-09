@@ -13,10 +13,13 @@ export interface SessionInfo {
   localTime: string;
 }
 
-function dstShift(now: Date): number {
-  // Approximate DST: Northern hemisphere — Apr..Oct = summer (e.g. London +1, NY -4).
+function dstShift(offsetBase: number, now: Date): number {
+  // Approximate DST: Northern hemisphere (positive offsets) — Apr..Oct = summer.
+  // Sydney (Southern Hemisphere, +10/+11) — opposite schedule.
   const m = now.getUTCMonth();
-  return m >= 2 && m <= 9 ? 1 : 0;
+  if (offsetBase >= 10) return m >= 9 || m <= 2 ? 1 : 0; // Sydney summer = Oct..Mar
+  if (offsetBase > 0 || offsetBase <= -3) return m >= 2 && m <= 9 ? 1 : 0; // Northern summer
+  return 0;
 }
 
 export function sessionStatus(
@@ -28,7 +31,7 @@ export function sessionStatus(
   offsetBase: number,
   now: Date
 ): SessionInfo {
-  const offset = offsetBase + (offsetBase === 0 || offsetBase === 5 ? dstShift(now) : 0);
+  const offset = offsetBase + dstShift(offsetBase, now);
   const utcMin = now.getUTCHours() * 60 + now.getUTCMinutes();
   const openMin = openUtc * 60;
   const closeMin = closeUtc * 60;
@@ -85,10 +88,10 @@ export function sessionStatus(
 /** FX market sessions: Sydney open → Tokyo → London → New York, tracked live. */
 export function getSessions(now: Date): SessionInfo[] {
   return [
-    sessionStatus('Sydney', 'AUS', '🇦🇺', 21, 6, 10, now),
+    sessionStatus('Sydney', 'AUS', '🇦🇺', 22, 7, 10, now),
     sessionStatus('Tokyo', 'JPN', '🇯🇵', 0, 9, 9, now),
-    sessionStatus('London', 'GBR', '🇬🇧', 7, 16, 0, now),
-    sessionStatus('New York', 'USA', '🇺🇸', 12, 21, 5, now)
+    sessionStatus('London', 'GBR', '🇬🇧', 8, 17, 0, now),
+    sessionStatus('New York', 'USA', '🇺🇸', 13, 22, -5, now)
   ];
 }
 
