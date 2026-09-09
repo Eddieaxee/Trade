@@ -895,6 +895,106 @@ body[data-market='closed'] .page { opacity: 0.92; }
 .crt-step-label { font-size: 9.5px; font-weight: 700; text-align: center; color: var(--text); }
 .crt-step.done .crt-step-label { color: var(--up); }
 
+/* ---------- AI summary ---------- */
+.ai-summary {
+  background: linear-gradient(135deg, rgba(58, 165, 255, 0.08) 0%, rgba(38, 194, 129, 0.06) 100%);
+  border: 1px solid rgba(58, 165, 255, 0.3);
+}
+.ai-summary h3 { color: var(--up); }
+.ai-narrative {
+  font-size: 13.5px;
+  line-height: 1.6;
+  margin: 0 0 10px;
+  color: var(--text);
+}
+.ai-risks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.ai-risk-tag {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: rgba(230, 162, 60, 0.12);
+  border: 1px solid rgba(230, 162, 60, 0.3);
+  color: var(--warn);
+}
+.ai-pairs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.ai-label {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.ai-timestamp {
+  font-size: 10px;
+  color: var(--muted);
+  font-family: var(--mono);
+}
+
+/* ---------- News cards ---------- */
+.news-card {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.news-card:last-child { border-bottom: none; }
+.news-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.impact-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.5px;
+}
+.impact-badge.high { background: rgba(240, 80, 106, 0.2); color: var(--down); }
+.impact-badge.medium { background: rgba(230, 162, 60, 0.2); color: var(--warn); }
+.impact-badge.low { background: rgba(58, 165, 255, 0.15); color: var(--accent); }
+.news-source {
+  font-size: 10px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.news-time {
+  font-size: 10px;
+  color: var(--muted);
+  margin-left: auto;
+  font-family: var(--mono);
+}
+.news-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  text-decoration: none;
+  display: block;
+  margin-bottom: 6px;
+  line-height: 1.4;
+}
+.news-title:hover { color: var(--accent); }
+.news-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.news-action {
+  font-size: 11px;
+  font-style: italic;
+  color: var(--muted);
+}
+
 /* ---------- News room ---------- */
 .news-card {
   border: 1px solid var(--border);

@@ -32,25 +32,38 @@ export function sessionStatus(
   const utcMin = now.getUTCHours() * 60 + now.getUTCMinutes();
   const openMin = openUtc * 60;
   const closeMin = closeUtc * 60;
+  const wrapsMidnight = closeMin <= openMin; // e.g. Sydney 21:00 → 06:00
 
   // Trading-week guard: weekends (Fri 21:00 UTC → Sun 22:00 UTC) are closed.
   const dow = now.getUTCDay(); // 0=Sun … 6=Sat
-  const dayOpen = (dow >= 1 && dow <= 5 && !(dow === 5 && utcMin >= 21 * 60));
   const dayClosed = dow === 0 || (dow === 5 && utcMin >= 21 * 60) || (dow === 6 && utcMin < 22 * 60);
+
+  const inSession = wrapsMidnight
+    ? (utcMin >= openMin || utcMin < closeMin)
+    : (utcMin >= openMin && utcMin < closeMin);
+
+  const beforeOpen = wrapsMidnight
+    ? (utcMin >= closeMin && utcMin < openMin)
+    : (utcMin < openMin);
 
   let status: SessionInfo['status'];
   if (dayClosed) {
     status = 'closed';
-  } else if (utcMin >= openMin - 30 && utcMin < openMin) {
+  } else if (inSession) {
+    // Check closing-soon (last 45 min before close)
+    const minsToClose = wrapsMidnight
+      ? (utcMin >= openMin ? (24 * 60 - utcMin + closeMin) : (closeMin - utcMin))
+      : (closeMin - utcMin);
+    if (minsToClose <= 45) {
+      status = 'closing-soon';
+    } else {
+      status = 'open';
+    }
+  } else if (beforeOpen && (openMin - utcMin <= 30 || (wrapsMidnight && utcMin >= closeMin && (openMin + 24 * 60 - utcMin) <= 30))) {
     status = 'opening-soon';
-  } else if (utcMin >= closeMin - 45 && utcMin < closeMin) {
-    status = 'closing-soon';
-  } else if (utcMin >= openMin && utcMin < closeMin) {
-    status = 'open';
   } else {
     status = 'closed';
   }
-  void dayOpen;
 
   // Local clock at the session's offset.
   const local = new Date(now.getTime() + offset * 3600_000);

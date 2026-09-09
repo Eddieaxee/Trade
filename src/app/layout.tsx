@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 // @ts-ignore: allow importing global CSS without type declarations
 import "./globals.css";
-import { Analytics } from "@vercel/analytics/next";
-import { SpeedInsights } from "@vercel/speed-insights/next";
 
 export const metadata: Metadata = {
   title: "FX Pulse — Forex Market Intelligence",
@@ -24,8 +22,6 @@ export default function RootLayout({
     <html lang="en">
       <body>
         {children}
-        <Analytics />
-        <SpeedInsights />
       </body>
     </html>
   );
