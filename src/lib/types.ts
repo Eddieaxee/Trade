@@ -29,6 +29,7 @@ export interface Swing {
 /** Swing with fractal classification vs the previous same-kind swing. */
 export interface SwingLabel extends Swing {
   label: 'HH' | 'HL' | 'LH' | 'LL';
+  strength: 'strong' | 'moderate' | 'weak';
 }
 
 export interface StructureEvent {

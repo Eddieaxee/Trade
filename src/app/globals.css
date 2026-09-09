@@ -706,3 +706,190 @@ table.grid-table {
   color: var(--muted);
   margin-top: -4px;
 }
+
+/* ── Market sessions bar ───────────────────────────────────────────────── */
+.market-sessions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  font-size: 10px;
+  margin-left: auto;
+  padding: 2px 8px;
+}
+
+.utc-pill {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 1px 7px;
+  color: var(--muted);
+  font-family: var(--mono);
+}
+
+.session-chip {
+  border-radius: 5px;
+  padding: 1px 7px;
+  font-family: var(--mono);
+  white-space: nowrap;
+}
+
+.session-chip b { font-weight: 700; }
+.session-chip em { opacity: 0.75; font-style: normal; font-size: 9px; }
+
+.session-chip.session-open {
+  background: rgba(38, 194, 129, 0.16);
+  color: var(--up);
+  border: 1px solid rgba(38, 194, 129, 0.45);
+}
+
+.session-chip.session-soon { background: rgba(230, 162, 60, 0.14); color: var(--warn); border: 1px solid rgba(230, 162, 60, 0.4); }
+
+.session-chip.session-closing { background: rgba(230, 162, 60, 0.14); color: var(--warn); border: 1px solid rgba(230, 162, 60, 0.4); }
+
+.session-chip.session-closed { background: var(--panel-2); color: var(--muted); border: 1px solid var(--border); }
+
+.session-banner {
+  font-size: 10px;
+  color: var(--muted);
+  background: rgba(125, 135, 152, 0.1);
+  border-radius: 5px;
+  padding: 1px 8px;
+}
+
+.session-banner.session-soon { color: var(--warn); background: rgba(230, 162, 60, 0.1); }
+.session-banner.session-closed { color: var(--muted); }
+
+/* Market-closed app tint: dim content slightly when no session is open. */
+body[data-market='closed'] .page { opacity: 0.92; }
+
+/* ── Market session panel (dashboard) ───────────────────────────────────── */
+.session-panel {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+}
+
+.session-card { padding: 8px 10px; }
+
+.session-card .sc-city { font-size: 12px; font-weight: 700; }
+.session-card .sc-time { font-size: 22px; font-family: var(--mono); font-weight: 800; margin-top: 2px; }
+.session-card .sc-range { font-size: 10px; color: var(--muted); font-family: var(--mono); }
+.session-card.open { border: 1px solid rgba(38, 194, 129, 0.55); background: rgba(38, 194, 129, 0.08); }
+.session-card.soon { border: 1px solid rgba(230, 162, 60, 0.5); background: rgba(230, 162, 60, 0.07); }
+.session-card.closed { border: 1px solid var(--border); }
+.session-card.open { border: 1px solid rgba(38, 194, 129, 0.55); background: rgba(38, 194, 129, 0.08); }
+.session-card.soon { border: 1px solid rgba(230, 162, 60, 0.5); background: rgba(230, 162, 60, 0.07); }
+.session-card.closed { border: 1px solid var(--border); }
+
+/* ---------- Pair selector + legend rows ---------- */
+.pair-select {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  outline: none;
+}
+.pair-select:hover, .pair-select:focus { border-color: rgba(58, 165, 255, 0.6); }
+.legend-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+/* ---------- CRT phase stepper ---------- */
+.crt-stepper { margin-top: 12px; }
+.crt-status-track {
+  display: flex;
+  justify-content: space-between;
+  position: relative;
+  margin-bottom: 10px;
+}
+.crt-status-track::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  left: 8%;
+  right: 8%;
+  height: 2px;
+  background: var(--border);
+  z-index: 0;
+}
+.crt-status-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  z-index: 1;
+  flex: 1;
+}
+.crt-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--panel-2);
+  border: 2px solid var(--border);
+  transition: all 0.3s;
+}
+.crt-status-node.active .crt-dot {
+  background: var(--up);
+  border-color: var(--up);
+  box-shadow: 0 0 10px rgba(38, 194, 129, 0.7);
+}
+.crt-status-node.passed .crt-dot { border-color: var(--up); background: rgba(38, 194, 129, 0.35); }
+.crt-status-node.invalidated.active .crt-dot {
+  background: var(--down);
+  border-color: var(--down);
+  box-shadow: 0 0 10px rgba(240, 80, 106, 0.7);
+}
+.crt-status-node.invalidated.passed .crt-dot { border-color: var(--down); background: rgba(240, 80, 106, 0.3); }
+.crt-status-label { font-size: 10px; color: var(--muted); font-weight: 600; }
+.crt-status-node.active .crt-status-label { color: var(--text); }
+
+.crt-progress {
+  height: 5px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+.crt-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--up) 0%, rgba(58, 165, 255, 0.9) 100%);
+  transition: width 0.5s ease;
+}
+
+.crt-steps {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+.crt-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 8px 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+  opacity: 0.55;
+  transition: all 0.3s;
+}
+.crt-step.done {
+  opacity: 1;
+  border-color: rgba(38, 194, 129, 0.55);
+  background: rgba(38, 194, 129, 0.09);
+}
+.crt-step-icon { font-size: 15px; }
+.crt-step-label { font-size: 9.5px; font-weight: 700; text-align: center; color: var(--text); }
+.crt-step.done .crt-step-label { color: var(--up); }

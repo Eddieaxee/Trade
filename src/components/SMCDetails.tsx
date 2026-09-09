@@ -21,28 +21,46 @@ export default function SMCDetails({ a }: { a: PairAnalysis }) {
     <>
       <div className="panel">
         <h3>Market structure — swing classification</h3>
+        <div className="legend-row" style={{ marginBottom: 6 }}>
+          <span className="chip green">HH/HL bullish</span>
+          <span className="chip red">LH/LL bearish</span>
+          <span className="chip blue">STRONG swept with displacement</span>
+          <span className="chip gray">WEAK failed to break</span>
+          <span className="tone-muted" style={{ fontSize: 11 }}>showing latest {Math.min(smc.swingLabels.length, 8)} of {smc.swingLabels.length}</span>
+        </div>
         <div style={{ overflowX: 'auto' }}>
           <table className="grid-table">
             <thead>
-              <tr><th>#</th><th>Swing</th><th>Label</th><th>Price</th><th>Time</th></tr>
+              <tr><th>#</th><th>Swing</th><th>Label</th><th>Strength</th><th>Price</th><th>Time</th></tr>
             </thead>
             <tbody>
-              {smc.swingLabels.map((s, i) => (
+              {smc.swingLabels.slice(-8).map((s, i, arr) => (
                 <tr key={i}>
-                  <td>{i + 1}</td>
+                  <td className="tone-muted">{smc.swingLabels.length - arr.length + i + 1}</td>
                   <td>{s.kind === 'high' ? 'Swing High' : 'Swing Low'}</td>
                   <td>
                     <span className={`chip ${s.label === 'HH' || s.label === 'HL' ? 'green' : 'red'}`}>{s.label}</span>
+                  </td>
+                  <td>
+                    <span className={`chip ${s.strength === 'strong' ? 'blue' : s.strength === 'weak' ? 'gray' : 'gray'}`}>
+                      {s.strength === 'strong' ? 'STRONG' : s.strength === 'weak' ? 'WEAK' : 'MOD'}
+                    </span>
                   </td>
                   <td>{fmtPrice(s.price)}</td>
                   <td className="tone-muted">{fmtAgo(s.t)} ago</td>
                 </tr>
               ))}
               {!smc.swingLabels.length && (
-                <tr><td colSpan={5} className="tone-muted">Not enough swings yet.</td></tr>
+                <tr><td colSpan={6} className="tone-muted">Not enough swings yet.</td></tr>
               )}
             </tbody>
           </table>
+        </div>
+        <div className="legend-row" style={{ marginTop: 8 }}>
+          <span className="chip blue">STRONG highs ×{smc.swingLabels.filter((s) => s.kind === 'high' && s.strength === 'strong').length}</span>
+          <span className="chip gray">WEAK highs ×{smc.swingLabels.filter((s) => s.kind === 'high' && s.strength === 'weak').length}</span>
+          <span className="chip blue">STRONG lows ×{smc.swingLabels.filter((s) => s.kind === 'low' && s.strength === 'strong').length}</span>
+          <span className="chip gray">WEAK lows ×{smc.swingLabels.filter((s) => s.kind === 'low' && s.strength === 'weak').length}</span>
         </div>
         <StatRow k="Structure trend" v={smc.trendLabel} tone={smc.trend === 'bullish' ? 'tone-up' : smc.trend === 'bearish' ? 'tone-down' : ''} />
       </div>
@@ -56,12 +74,15 @@ export default function SMCDetails({ a }: { a: PairAnalysis }) {
 
       <div className="panel">
         <h3>Liquidity map — buy-side vs sell-side</h3>
-        {smc.equalHighs.map((e, i) => (
+        {smc.equalHighs.slice(0, 3).map((e, i) => (
           <StatRow key={`h${i}`} k={`EQH ×${e.touches} (buy-side pool)`} v={`↑ ${fmtPrice(e.price)}`} tone="tone-down" />
         ))}
-        {smc.equalLows.map((e, i) => (
+        {smc.equalLows.slice(0, 3).map((e, i) => (
           <StatRow key={`l${i}`} k={`EQL ×${e.touches} (sell-side pool)`} v={`↓ ${fmtPrice(e.price)}`} tone="tone-up" />
         ))}
+        {(smc.equalHighs.length > 3 || smc.equalLows.length > 3) && (
+          <p className="tone-muted" style={{ fontSize: 11 }}>Showing the 3 nearest pools of each side ({smc.equalHighs.length} EQH / {smc.equalLows.length} EQL total).</p>
+        )}
         {!smc.equalHighs.length && !smc.equalLows.length && (
           <p className="tone-muted" style={{ fontSize: 12 }}>No equal-high/low pools in the window.</p>
         )}
@@ -100,7 +121,7 @@ export function SMCBlocksAndZones({ a }: { a: PairAnalysis }) {
               <tr><th>Type</th><th>Side</th><th>Price</th><th>State</th><th>Age</th></tr>
             </thead>
             <tbody>
-              {smc.orderBlocks.map((b, i) => (
+              {smc.orderBlocks.slice(-4).map((b, i, arr) => (
                 <tr key={`ob${i}`}>
                   <td>Order block</td>
                   <td>{b.side === 'buy' ? <span className="chip green">BUY</span> : <span className="chip red">SELL</span>}</td>
@@ -109,7 +130,7 @@ export function SMCBlocksAndZones({ a }: { a: PairAnalysis }) {
                   <td className="tone-muted">{fmtAgo(b.t)} ago</td>
                 </tr>
               ))}
-              {smc.breakers.map((b, i) => (
+              {smc.breakers.slice(-2).map((b, i) => (
                 <tr key={`br${i}`}>
                   <td>Breaker / mitigation</td>
                   <td>{b.side === 'buy' ? <span className="chip green">BUY</span> : <span className="chip red">SELL</span>}</td>
@@ -118,6 +139,9 @@ export function SMCBlocksAndZones({ a }: { a: PairAnalysis }) {
                   <td className="tone-muted">{fmtAgo(b.t)} ago</td>
                 </tr>
               ))}
+              {(smc.orderBlocks.length > 4 || smc.breakers.length > 2) && (
+                <tr><td colSpan={5} className="tone-muted">Showing the 4 freshest order blocks and 2 latest breakers ({smc.orderBlocks.length} OB / {smc.breakers.length} breakers total in window).</td></tr>
+              )}
               {!smc.orderBlocks.length && !smc.breakers.length && (
                 <tr><td colSpan={5} className="tone-muted">No blocks in window.</td></tr>
               )}

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import NavBar from '@/components/NavBar';
+import MarketSessions from '@/components/MarketSessions';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -28,6 +29,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </span>
           </div>
           <NavBar />
+          <MarketSessions />
         </header>
         {children}
         <footer
@@ -39,8 +41,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             color: 'var(--muted)'
           }}
         >
-          FX Pulse · analysis built from real keyless market data (Yahoo Finance OHLC · Frankfurter/ECB · ER-API).
-          Research tooling only — not investment advice; no orders are routed or executed.
+          FX Pulse · analysis built from real keyless market data (Yahoo Finance OHLC · Frankfurter/ECB · ER-API ·
+          Twelve Data when configured). Research tooling only — not investment advice; no orders are routed or executed.
         </footer>
       </body>
     </html>

@@ -47,6 +47,42 @@ function CRTPhaseDiagram({ phase }: { phase: CRTPhase }) {
   );
 }
 
+function CRTPhaseStepper({ phase }: { phase: CRTPhase }) {
+  const steps: Array<{ key: string; label: string; done: boolean; icon: string }> = [
+    { key: 'manipulation', label: 'Manipulation', done: phase.manipulation, icon: '🎣' },
+    { key: 'sweep', label: phase.sweep === 'high' ? 'Sweep high' : phase.sweep === 'low' ? 'Sweep low' : 'Sweep', done: phase.sweep !== null, icon: '⚡' },
+    { key: 'reclaim', label: 'Reclaim', done: phase.reclaim, icon: '↩' },
+    { key: 'displacement', label: 'Displacement', done: phase.displacement, icon: '💥' },
+    { key: 'confirmation', label: 'Confirmation', done: phase.confirmation, icon: '✓' }
+  ];
+  const doneCount = steps.filter((s) => s.done).length;
+  const statusIdx = phase.status === 'confirmed' ? 3 : phase.status === 'confirming' ? 2 : phase.status === 'invalidated' ? 0 : 1;
+  const statuses: CRTStatus[] = ['invalidated', 'developing', 'confirming', 'confirmed'];
+  const statusLabel: Record<CRTStatus, string> = { developing: 'Developing', confirming: 'Confirming', confirmed: 'Confirmed', invalidated: 'Invalidated' };
+
+  return (
+    <div className="crt-stepper">
+      <div className="crt-status-track">
+        {statuses.map((st, i) => (
+          <div key={st} className={`crt-status-node ${i === statusIdx ? 'active' : i < statusIdx ? 'passed' : ''} ${st}`}>
+            <span className="crt-dot" />
+            <span className="crt-status-label">{statusLabel[st]}</span>
+          </div>
+        ))}
+      </div>
+      <div className="crt-progress"><div className="crt-progress-fill" style={{ width: `${(doneCount / steps.length) * 100}%` }} /></div>
+      <div className="crt-steps">
+        {steps.map((s) => (
+          <div key={s.key} className={`crt-step ${s.done ? 'done' : ''}`} title={s.label}>
+            <span className="crt-step-icon">{s.icon}</span>
+            <span className="crt-step-label">{s.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function CRTPhaseView({ phase }: { phase: CRTPhase }) {
   return (
     <>
@@ -60,6 +96,7 @@ function CRTPhaseView({ phase }: { phase: CRTPhase }) {
           </span>
         </div>
         <ScoreBar score={phase.score} />
+        <CRTPhaseStepper phase={phase} />
         <CRTPhaseDiagram phase={phase} />
         <div style={{ marginTop: 10 }}>
           <BoolRow k="Manipulation wick" v={phase.manipulation} />

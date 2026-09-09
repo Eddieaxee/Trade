@@ -76,7 +76,9 @@ export default function PairDashboard({ a, mtf }: { a: PairAnalysis; mtf: PairMT
           <div style={{ fontSize: 36, fontWeight: 800, fontFamily: 'var(--mono)' }}>{fmtPrice(a.price)}</div>
           <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
             <span className={`chip ${a.change24h !== null && a.change24h >= 0 ? 'green' : 'red'}`}>24H {fmtPct(a.change24h)}</span>
-            <span className="chip gray">Range {a.crt.rangeMode.toUpperCase()}{a.crt.expansion ? ' ⤢' : a.crt.contraction ? ' ⤡' : ''}</span>
+            <span className={`chip ${a.change1h !== null && a.change1h >= 0 ? 'green' : 'red'}`}>1H {fmtPct(a.change1h)}</span>
+            <span className="chip gray">Spread {a.spread !== null ? fmtPrice(a.spread) : '—'}</span>
+            <span className={`chip ${a.volatility === 'high' ? 'red' : a.volatility === 'low' ? 'gray' : 'blue'}`}>Vol {a.volatility}</span>
           </div>
         </div>
         <div className="panel">

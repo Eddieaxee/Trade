@@ -121,54 +121,124 @@ function columnFrom(series: StarSeries, tfLabel: string, bars: number, useLive: 
 }
 // ── matrix.ts part 2: full-matrix build + cache ─────────────────────────────
 
+import type { RatePoint } from '@/lib/types';
+import { getRatesCached } from '@/lib/analysis/index';
+import { sleep } from '@/lib/utils';
+
 const BASE_NOTE =
   'Scores are cross-sectional z-scores over the rolling window: relative strength, always summing to ≈ 0.';
 
+/** Max open provider requests at once (avoids Yahoo/limit blocks). */
+const BATCH_LIMIT = 3;
+/** Pause between throttled batches to avoid 429s. */
+const BATCH_DELAY_MS = 400;
+
+/**
+ * Fetch one star-pair set with a small concurrency cap. Returns whatever
+ * resolved; does NOT throw when individual pairs fail (they filter out).
+ */
+async function starSeriesThrottled(tf: Granularity): Promise<StarSeries> {
+  const out: StarSeries = {};
+  for (let i = 0; i < STAR_PAIRS.length; i += BATCH_LIMIT) {
+    const batch = STAR_PAIRS.slice(i, i + BATCH_LIMIT);
+    const settled = await Promise.allSettled(
+      batch.map(async (p) => ({ p, r: await getCandlesCached(p, tf) }))
+    );
+    for (const s of settled) {
+      if (s.status === 'fulfilled') out[s.value.p.symbol] = s.value.r.candles;
+    }
+    if (i + BATCH_LIMIT < STAR_PAIRS.length) await sleep(BATCH_DELAY_MS);
+  }
+  return out;
+}
+
+/** Build a daily candle series per EUR-star pair from ECB/Frankfurter rates.
+ *  This is keyless, daily, and never rate-limited — it keeps the 1D/1W columns
+ *  alive even when intraday feeds are down. */
+function dailyStarSeries(points: RatePoint[]): StarSeries {
+  const out: StarSeries = {};
+  for (const p of STAR_PAIRS) {
+    const q = p.symbol.slice(3); // EURXXX → XXX
+    const candles: Candle[] = [];
+    for (const pt of points) {
+      const v = pt.rates[q];
+      if (!v || !Number.isFinite(v) || v <= 0) continue;
+      candles.push({ t: pt.t, o: v, h: v, l: v, c: v });
+    }
+    candles.sort((a, b) => a.t - b.t);
+    if (candles.length >= 5) out[p.symbol] = candles;
+  }
+  return out;
+}
+
 /** Build the full matrix across all timeframes (cache-wrapped by the getter). */
 export async function buildStrengthMatrix(): Promise<StrengthMatrix> {
-  const tfs: Granularity[] = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w'];
   const notes: string[] = [
     '30S† is derived from the freshest sub-minute movement in the 1m feed — keyless providers floor at 1-minute granularity.',
     BASE_NOTE
   ];
   const cols: StrengthTFColumn[] = [];
 
-  const settled = await Promise.allSettled(
-    tfs.map(async (tf) => ({ tf, series: await starSeries(tf) }))
-  );
-
-  const failed: string[] = [];
-  for (const s of settled) {
-    if (s.status !== 'fulfilled') {
-      failed.push(s.reason instanceof Error ? s.reason.message : String(s.reason));
-      continue;
-    }
-    const { tf, series } = s.value;
-    cols.push(columnFrom(series, tf, WINDOW_BARS[tf] ?? 6, false));
-  }
-  if (failed.length) {
-    notes.push(`${failed.length} of ${tfs.length} timeframe feeds failed: ${failed[0]}${failed.length > 1 ? ' …' : ''}`);
-  }
-
-  // 30S† column from the freshest 1m closes.
+  // ── Daily backbone (1D / 1W) from ECB/Frankfurter — always reliable. ──────
   try {
-    const series = await starSeries('1m');
-    cols.unshift(columnFrom(series, '30s†', 0, true));
-  } catch {
+    const rates = await getRatesCached();
+    const daily = dailyStarSeries(rates.series);
+    if (Object.keys(daily).length >= 4) {
+      cols.push(columnFrom(daily, '1d', WINDOW_BARS['1d'] ?? 5, false));
+      cols.push(columnFrom(daily, '1w', WINDOW_BARS['1w'] ?? 4, false));
+    } else {
+      notes.push('Daily rate backbone unavailable — only intraday columns shown.');
+    }
+  } catch (e) {
+    notes.push(`Daily rates: ${e instanceof Error ? e.message : 'unavailable'} — skipped.`);
+  }
+
+  // ── Intraday TFs (best-effort, throttled + delayed). ──────────────────────
+  const intraday: Granularity[] = ['1m', '5m', '15m', '30m', '1h', '4h'];
+  for (const tf of intraday) {
+    try {
+      const series = await starSeriesThrottled(tf);
+      const keys = Object.keys(series);
+      if (keys.length < 4) {
+        notes.push(`${tf}: only ${keys.length} star pairs resolved — skipped.`);
+        continue;
+      }
+      cols.push(columnFrom(series, tf, WINDOW_BARS[tf] ?? 6, false));
+    } catch (e) {
+      notes.push(`${tf}: ${e instanceof Error ? e.message : 'feed failed'} — skipped.`);
+    }
+  }
+
+  // 30S† column from the freshest 1m closes (only if 1m survived).
+  const has1m = cols.some((c) => c.tf === '1m');
+  if (has1m) {
+    try {
+      const series = await starSeriesThrottled('1m');
+      if (Object.keys(series).length >= 4) cols.unshift(columnFrom(series, '30s†', 0, true));
+    } catch {
+      notes.push('30S† column unavailable — 1m feed failed.');
+    }
+  } else {
     notes.push('30S† column unavailable — 1m feed failed.');
   }
 
+  const merged_notes = [...new Set(notes)];
+  if (!cols.length) {
+    throw new Error('strength matrix: every timeframe feed failed');
+  }
+  if (cols.length < 6) merged_notes.push('Only a subset of timeframes resolved — see breakdown above.');
+  merged_notes.push('Feed throttle: provider requests are batched and delayed to avoid rate limits.');
+
   cols.sort((a, b) => TF_ORDER.indexOf(a.tf) - TF_ORDER.indexOf(b.tf));
 
-  if (!cols.length) throw new Error('strength matrix: every timeframe feed failed');
-  return { updatedAt: Date.now() / 1000, sources: ['yahoo'], tfs: cols, notes };
+  return { updatedAt: Date.now() / 1000, sources: ['yahoo', 'frankfurter'], tfs: cols, notes: merged_notes };
 }
 
-const MATRIX_KEY = cacheKey('strength-matrix', 'v2');
+const MATRIX_KEY = cacheKey('strength-matrix', 'v3');
 
 export async function getStrengthMatrixCached(): Promise<StrengthMatrix> {
   const hit = await cacheGet<StrengthMatrix>(MATRIX_KEY);
-  if (hit && hit.tfs && hit.tfs.length) return hit;
+  if (hit && hit.tfs && hit.tfs.length >= 4) return hit;
   const fresh = await buildStrengthMatrix();
   await cacheSet(MATRIX_KEY, fresh, TTL_STRENGTH_MATRIX);
   return fresh;

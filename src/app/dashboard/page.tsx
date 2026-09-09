@@ -3,12 +3,14 @@
 import { useEffect, useState } from 'react';
 import type { Granularity, MarketSnapshot } from '@/lib/types';
 import { INTERVALS } from '@/lib/constants';
-import { fmtAgo, fmtClock } from '@/lib/utils';
+import { fmtAgo, fmtClock, fmtPrice } from '@/lib/utils';
 import StrengthBoard from '@/components/StrengthBoard';
 import PairTable from '@/components/PairTable';
 import SMCCard from '@/components/SMCCard';
 import CRTCard from '@/components/CRTCard';
-import ConfluenceCard from '@/components/ConfluenceCard';
+import IndicatorsCard from '@/components/IndicatorsCard';
+import { getSessions } from '@/components/MarketSessions';
+import ScoreBar from '@/components/ScoreBar';
 
 export default function Dashboard() {
   const [interval, setInterval] = useState<Granularity>('1h');
@@ -46,12 +48,14 @@ export default function Dashboard() {
   }, [interval]);
 
   const sel = snapshot?.pairs.find((p) => p.pair.symbol === selected) ?? snapshot?.pairs[0];
+  const sessions = getSessions(new Date());
+
   return (
     <div className="page">
       <div className="dashboard-header">
         <div className="dashboard-title-row">
-          <h1 className="page-title">Dashboard</h1>
-          <span className="page-sub">Market overview — strongest currencies, top pairs, system bias</span>
+          <h1 className="page-title">Market Overview</h1>
+          <span className="page-sub">Strongest currencies, watchlist, sessions — the whole market at a glance.</span>
         </div>
         <div className="dashboard-controls">
           <div className="interval-nav" role="tablist" aria-label="Chart interval">
@@ -83,28 +87,57 @@ export default function Dashboard() {
 
       {snapshot && (
         <>
+          <div className="panel" style={{ marginBottom: 10 }}>
+            <h3>Market sessions — live</h3>
+            <div className="session-panel">
+              {sessions.map((s) => (
+                <div key={s.city} className={`session-card ${s.status}`}>
+                  <div className="sc-city">{s.flag} {s.name}</div>
+                  <div className="sc-time">{s.localTime}</div>
+                  <div className="sc-range">
+                    {s.status === 'open' ? '● Open' : s.status === 'opening-soon' ? '◐ Opening soon' : s.status === 'closing-soon' ? '◑ Closing soon' : '○ Closed'}
+                    {' '}· {s.open}:00–{s.close}h UTC
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
           <div className="panel" style={{ marginBottom: 12 }}>
             <h3>Currency strength — relative 1d/7d decomposition (EUR-based rates)</h3>
             <StrengthBoard strength={snapshot.strength} />
           </div>
+
           <PairTable snapshot={snapshot} />
           {sel && (
             <div style={{ marginTop: 14 }}>
-              <h3 className="section-label">
-                {sel.pair.symbol} · {sel.source} · {sel.interval}{sel.confluence.support || sel.confluence.resistance ? ` · S ${sel.confluence.support ?? '—'} / R ${sel.confluence.resistance ?? '—'}` : ''}
-              </h3>
+              <div className="dashboard-title-row" style={{ marginBottom: 8 }}>
+                <h3 className="section-label" style={{ margin: 0 }}>
+                  {sel.pair.symbol} · {sel.source} · {sel.interval}{sel.confluence.support || sel.confluence.resistance ? ` · S ${sel.confluence.support ?? '—'} / R ${sel.confluence.resistance ?? '—'}` : ''}
+                </h3>
+                <select
+                  className="pair-select"
+                  value={selected ?? sel.pair.symbol}
+                  onChange={(e) => setSelected(e.target.value)}
+                  aria-label="Pick a pair to inspect"
+                >
+                  {snapshot.pairs.map((p) => (
+                    <option key={p.pair.symbol} value={p.pair.symbol}>{p.pair.symbol}</option>
+                  ))}
+                </select>
+              </div>
               <div className="cards-4">
                 <SMCCard analysis={sel} />
                 <CRTCard analysis={sel} />
-                <ConfluenceCard analysis={sel} />
+                <IndicatorsCard analysis={sel} />
                 <div className="panel">
                   <h3>Market snapshot</h3>
                   <div className="snapshot-grid">
-                    <span>Session</span><span className="pill">{sel.interval}</span>
+                    <span>Timeframe</span><span className="pill">{sel.interval}</span>
                     <span>Source</span><span className="pill">{sel.source}</span>
                     <span>SMC</span><b>{sel.smc.score > 0 ? '+' : ''}{sel.smc.score}</b>
                     <span>CRT</span><b>{sel.crt.score > 0 ? '+' : ''}{sel.crt.score}</b>
-                    <span>Confluence</span><b className={sel.confluence.score >= 0 ? 'up-text' : 'down-text'}>{sel.confluence.score > 0 ? '+' : ''}{sel.confluence.score}</b>
+                    <span>Indicators</span><b className={sel.indicators.score >= 0 ? 'up-text' : 'down-text'}>{sel.indicators.score > 0 ? '+' : ''}{sel.indicators.score}</b>
                     <span>Generated</span><b>{fmtAgo(snapshot.generatedAt)} ago</b>
                   </div>
                   <p className="disclaimer">Sentiment-style analytics over historical candles. Not investment advice; this dashboard never routes or executes orders.</p>

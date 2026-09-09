@@ -42,16 +42,30 @@ export function detectSwings(candles: Candle[], arm = SWING_ARMS): Swing[] {
 }
 
 /** Fractal classification: HH / HL / LH / LL vs the previous same-kind swing. */
-export function labelSwings(swings: Swing[]): SwingLabel[] {
+export function labelSwings(swings: Swing[], ranges?: number[]): SwingLabel[] {
   const out: SwingLabel[] = [];
   let prevHigh: number | null = null;
   let prevLow: number | null = null;
+  const rangeScale = ranges && ranges.length ? (() => {
+    const s = [...ranges].sort((a, b) => a - b);
+    return s[Math.floor(s.length / 2)] || 1;
+  })() : null;
+
+  const strength = (from: number | null, to: number, kind: 'high' | 'low'): 'strong' | 'moderate' | 'weak' => {
+    if (from === null || !rangeScale) return 'moderate';
+    const move = kind === 'high' ? to - from : from - to;
+    const ratio = move / (rangeScale || 1);
+    if (ratio >= 1.5) return 'strong';
+    if (ratio <= 0.6) return 'weak';
+    return 'moderate';
+  };
+
   for (const s of swings) {
     if (s.kind === 'high') {
-      out.push({ ...s, label: prevHigh === null ? 'HH' : s.price > prevHigh ? 'HH' : 'LH' });
+      out.push({ ...s, label: prevHigh === null ? 'HH' : s.price > prevHigh ? 'HH' : 'LH', strength: strength(prevHigh, s.price, 'high') });
       prevHigh = s.price;
     } else {
-      out.push({ ...s, label: prevLow === null ? 'HL' : s.price < prevLow ? 'LL' : 'HL' });
+      out.push({ ...s, label: prevLow === null ? 'HL' : s.price < prevLow ? 'LL' : 'HL', strength: strength(prevLow, s.price, 'low') });
       prevLow = s.price;
     }
   }
@@ -363,7 +377,7 @@ export function analyzeSMC(candles: Candle[]): SMC {
 
   const swingHighs = swings.filter((s) => s.kind === 'high').map((s) => s.price);
   const swingLows = swings.filter((s) => s.kind === 'low').map((s) => s.price);
-  const swingLabels = labelSwings(swings);
+  const swingLabels = labelSwings(swings, candles.map((c) => c.h - c.l));
   const { eqh, eql } = equalLevels(swings, lastC?.c ?? 0);
   const lastMSS = detectMSS(candles, swings, regime);
   const displacement = detectDisplacement(candles);
