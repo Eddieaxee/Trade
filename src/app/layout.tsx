@@ -9,6 +9,7 @@ export const metadata: Metadata = {
   description:
     'Dedicated Currency Strength, Smart Money Concepts, Indicators and Candle Range Theory analysis for FX. Multi-timeframe, real market data — analysis only, never a trading terminal.',
   metadataBase: new URL('https://forex-intelligence.example'),
+  icons: { icon: '/favicon.svg' },
   openGraph: {
     title: 'FX Pulse',
     description: 'Currency Strength · SMC · Indicators · CRT — dedicated analysis pages'

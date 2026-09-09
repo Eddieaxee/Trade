@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server';
 import type { Granularity, Pair } from '@/lib/types';
-import { CURRENCIES, INTERVALS } from '@/lib/constants';
+import { CURRENCIES, TF_ALL, DEFAULT_INTERVAL } from '@/lib/constants';
 import { getStrengthCached, analyzePair } from '@/lib/analysis';
 
 export const dynamic = 'force-dynamic';
@@ -25,9 +25,12 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Valid ?pair=CCYCCY required' }, { status: 400 });
     }
     const rawInterval = (sp.get('interval') || '').toLowerCase();
-    const interval: Granularity = INTERVALS.includes(rawInterval as Granularity)
+    // Accept EVERY provider-supported timeframe (1m…1w). Validating against the
+    // legacy INTERVALS list here silently downgraded 1m/5m/30m/1w to 1h — the
+    // reason SMC/indicator values "didn't change" with the timeframe selector.
+    const interval: Granularity = TF_ALL.includes(rawInterval as Granularity)
       ? (rawInterval as Granularity)
-      : '1h';
+      : DEFAULT_INTERVAL;
 
     const strength = await getStrengthCached();
     const analysis = await analyzePair(pair, interval, strength);

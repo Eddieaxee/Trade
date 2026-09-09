@@ -105,10 +105,11 @@ export async function analyzePair(
 }
 
 /**
- * Deterministic, structure-aware plan sketch:
+ * Deterministic, structure-aware plan sketch with REALISTIC geometry:
  *  - direction from the overall confluence score (|score| ≥ 15 only),
- *  - stop beyond the recent swing ± 1×ATR buffer,
- *  - TPs at 1×/2×/3× the risk distance, snapped to confluence S/R when near,
+ *  - risk bounded between 1×ATR and 2×ATR, widened only by swings in the
+ *    recent window (last 40 bars) so stops never land absurdly far away,
+ *  - every target pays ≥ 1:2 risk-to-reward (2R / 3R / 4R),
  *  - R:R quoted per target. Not advice — a starting sketch a user may ignore.
  */
 function buildTradePlan(
@@ -124,18 +125,28 @@ function buildTradePlan(
   if (Math.abs(score) < 15) return null; // no edge — refuse to invent one
   const dir: 'long' | 'short' = score > 0 ? 'long' : 'short';
 
-  // Risk distance: 1.5×ATR minimum, widened to clear the nearest opposing swing.
+  // Risk distance: 1.5×ATR baseline, hard-bounded to [1×ATR, 2×ATR], then
+  // widened ONLY if a *recent* opposing swing (within the last 40 bars) sits
+  // closer than the baseline — never by swings from days of history.
   let risk = atr * 1.5;
-  const swings = [...smc.swingHighs, ...smc.swingLows]
-    .filter((p) => (dir === 'long' ? p < price : p > price));
-  if (dir === 'long' && swings.length) risk = Math.max(risk, price - Math.min(...swings) + atr * 0.25);
-  if (dir === 'short' && swings.length) risk = Math.max(risk, Math.max(...swings) - price + atr * 0.25);
+  const cutoff = Date.now() / 1000 - GRAN_SECONDS[interval] * 40;
+  const recent = smc.swingLabels.filter((p) => p.t >= cutoff);
+  const opposing = recent
+    .filter((p) => (dir === 'long' ? p.kind === 'low' && p.price < price : p.kind === 'high' && p.price > price))
+    .map((p) => p.price);
+  if (opposing.length) {
+    const nearest = dir === 'long' ? Math.max(...opposing) : Math.min(...opposing);
+    const swingRisk = dir === 'long' ? price - nearest + atr * 0.25 : nearest - price + atr * 0.25;
+    risk = Math.min(Math.max(risk, swingRisk), atr * 2);
+  }
+  risk = Math.max(atr, Math.min(risk, atr * 2));
   risk = Math.round(risk * 1e5) / 1e5;
 
   const sign = dir === 'long' ? 1 : -1;
   const snap = (v: number) => Math.round(v * 1e5) / 1e5;
   const stop = snap(price - sign * risk);
-  const tps = [1, 2, 3].map((m) => snap(price + sign * risk * m));
+  // Minimum 1:2 RR — first target pays 2R, then 3R and 4R.
+  const tps = [2, 3, 4].map((m) => snap(price + sign * risk * m));
   const rr = (tp: number) => Math.round((Math.abs(tp - price) / risk) * 100) / 100;
 
   // Retest entry zone: nearest confluence S/R if within 0.75×ATR, else ±0.25×ATR.
@@ -148,7 +159,8 @@ function buildTradePlan(
   const conf = Math.min(95, Math.round(Math.abs(score)));
   const basis =
     `Confluence ${score > 0 ? '+' : ''}${score} (${confluence.label}) on ${interval} → ${dir}. ` +
-    `Risk 1.5×ATR (${risk.toFixed(5)}), stop beyond nearest opposing swing, targets at 1R/2R/3R` +
+    `Risk ${ (risk / atr).toFixed(1) }×ATR (${risk.toFixed(5)}), stop beyond the nearest recent opposing swing, ` +
+    `targets at 2R / 3R / 4R (min 1:2 RR)` +
     (sr ? `, entry zone centered on the ${dir === 'long' ? 'support' : 'resistance'} ${sr.toFixed(5)}` : '') +
     '. Informational sketch — not financial advice.';
 

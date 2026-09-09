@@ -33,8 +33,8 @@ export default function CartoonFace() {
     const tick = () => {
       const c = cur.current;
       const tgt = target.current;
-      const nx = c.x + (tgt.x - c.x) * 0.08;
-      const ny = c.y + (tgt.y - c.y) * 0.08;
+      const nx = c.x + (tgt.x - c.x) * 0.14;
+      const ny = c.y + (tgt.y - c.y) * 0.14;
       if (Math.abs(nx - c.x) > 0.0002 || Math.abs(ny - c.y) > 0.0002) {
         cur.current = { x: nx, y: ny };
         setSmooth({ x: nx, y: ny });
@@ -63,15 +63,15 @@ export default function CartoonFace() {
     };
   }, []);
 
-  const ex = (smooth.x - 0.5) * 8;   // whole-eye drift (±4 units in a 120 box)
-  const ey = (smooth.y - 0.5) * 5;
-  const px = (smooth.x - 0.5) * 13;  // pupil travel (±6.5 units) — clearly visible
-  const py = (smooth.y - 0.5) * 8;
-  const tilt = (smooth.x - 0.5) * 7; // face tilts toward the cursor (deg)
+  const ex = (smooth.x - 0.5) * 10;
+  const ey = (smooth.y - 0.5) * 7;
+  const px = (smooth.x - 0.5) * 16;  // pupil travel — clearly visible
+  const py = (smooth.y - 0.5) * 11;
+  const tilt = (smooth.x - 0.5) * 9; // face tilts toward the cursor (deg)
 
   return (
     <div className="cartoon-face" aria-hidden="true">
-      <svg viewBox="0 0 120 120" width="100%" height="100%" style={{ transform: `rotate(${tilt}deg)`, transition: 'transform 0.15s linear' }}>
+      <svg viewBox="0 0 120 120" width="100%" height="100%" style={{ transform: `rotate(${tilt}deg)` }}>
         <defs>
           <radialGradient id="faceGrad" cx="40%" cy="35%" r="65%">
             <stop offset="0%" stopColor="#1a2030" />
@@ -119,9 +119,28 @@ export default function CartoonFace() {
           opacity="0.8"
         />
 
-        {/* Antenna / data fin */}
+        {/* Antenna with pulsing tip */}
         <line x1="60" y1="10" x2="60" y2="0" stroke="#3aa5ff" strokeWidth="1.5" opacity="0.6" />
-        <circle cx="60" cy="-2" r="3" fill="#3aa5ff" opacity="0.7" />
+        <circle cx="60" cy="-2" r="3" fill="#3aa5ff" opacity="0.7">
+          <animate attributeName="opacity" values="0.3;1;0.3" dur="2s" repeatCount="indefinite" />
+          <animate attributeName="r" values="2;4;2" dur="2s" repeatCount="indefinite" />
+        </circle>
+
+        {/* Floating currency symbols around the face */}
+        <g opacity="0.55">
+          <text x="5" y="26" fontSize="9" fill="#3aa5ff" fontFamily="var(--mono)" fontWeight="700">
+            $<animateTransform attributeName="transform" type="translate" values="0,0;0,-7;0,0" dur="2.8s" repeatCount="indefinite" />
+          </text>
+          <text x="98" y="34" fontSize="9" fill="#26c281" fontFamily="var(--mono)" fontWeight="700">
+            €<animateTransform attributeName="transform" type="translate" values="0,0;0,-6;0,0" dur="3.2s" repeatCount="indefinite" />
+          </text>
+          <text x="12" y="106" fontSize="8" fill="#e6a23c" fontFamily="var(--mono)" fontWeight="700">
+            £<animateTransform attributeName="transform" type="translate" values="0,0;0,-5;0,0" dur="3.8s" repeatCount="indefinite" />
+          </text>
+          <text x="94" y="110" fontSize="9" fill="#f0506a" fontFamily="var(--mono)" fontWeight="700">
+            ¥<animateTransform attributeName="transform" type="translate" values="0,0;0,-6;0;0" dur="3s" repeatCount="indefinite" />
+          </text>
+        </g>
       </svg>
     </div>
   );

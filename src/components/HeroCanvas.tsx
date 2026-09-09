@@ -125,6 +125,103 @@ export default function HeroCanvas() {
       }
       ctx.restore();
 
+      // Floating currency symbols drifting through the 3D space
+      const symbols = ['$', '€', '£', '¥', '₣', 'A$', 'C$', '₩'];
+      ctx.save();
+      ctx.font = `${14}px var(--mono), monospace`;
+      ctx.textAlign = 'center';
+      for (let i = 0; i < symbols.length; i++) {
+        const seed = i * 131.7 + 50;
+        const depth = ((seed + time * 0.2 + i * 0.12) % 1);
+        const p = depth * depth;
+        const y = hy + 20 + p * (h - hy) * 0.8;
+        const x = w * 0.1 + ((i * 197.3 + time * 12) % (w * 0.8));
+        const alpha = 0.15 + (1 - depth) * 0.45;
+        const size = 12 + (1 - depth) * 10;
+        ctx.font = `${size}px var(--mono), monospace`;
+        const colors = ['#3aa5ff', '#26c281', '#e6a23c', '#f0506a', '#9b7dff', '#3aa5ff', '#26c281', '#e6a23c'];
+        ctx.fillStyle = colors[i % colors.length] + Math.round(alpha * 255).toString(16).padStart(2, '0');
+        ctx.fillText(symbols[i], x, y);
+      }
+      ctx.restore();
+
+      // Rotating wireframe globe (simulated 3D sphere with latitude/longitude lines)
+      ctx.save();
+      const globeX = w * 0.78;
+      const globeY = hy - 30;
+      const globeR = Math.min(w, h) * 0.08;
+      const rotY = time * 0.4;
+      ctx.strokeStyle = `rgba(58, 165, 255, 0.25)`;
+      ctx.lineWidth = 0.8;
+      // Latitude lines
+      for (let lat = 0; lat < 5; lat++) {
+        const angle = (lat / 4) * Math.PI - Math.PI / 2;
+        const cy = Math.sin(angle) * globeR;
+        const rz = Math.cos(angle) * globeR;
+        ctx.beginPath();
+        for (let a = 0; a <= 32; a++) {
+          const theta = (a / 32) * Math.PI * 2;
+          const sx = Math.cos(theta) * rz;
+          const sz = Math.sin(theta) * rz;
+          // Simple 3D rotation around Y axis
+          const rx = sx * Math.cos(rotY) - sz * Math.sin(rotY);
+          const rz2 = sx * Math.sin(rotY) + sz * Math.cos(rotY);
+          const screenX = globeX + rx;
+          const screenY = globeY + cy + rz2 * 0.3;
+          if (a === 0) ctx.moveTo(screenX, screenY);
+          else ctx.lineTo(screenX, screenY);
+        }
+        ctx.stroke();
+      }
+      // Longitude lines
+      for (let lon = 0; lon < 6; lon++) {
+        const phi = (lon / 6) * Math.PI * 2;
+        ctx.beginPath();
+        for (let a = 0; a <= 20; a++) {
+          const theta = (a / 20) * Math.PI * 2;
+          const sx = Math.cos(theta) * globeR * Math.cos(phi + rotY);
+          const sy = Math.sin(theta) * globeR;
+          const sz = Math.cos(theta) * globeR * Math.sin(phi + rotY);
+          const screenX = globeX + sx;
+          const screenY = globeY + sy + sz * 0.3;
+          if (a === 0) ctx.moveTo(screenX, screenY);
+          else ctx.lineTo(screenX, screenY);
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // Cartoon currency characters interacting in the background
+      const characters = [
+        { sym: '$', color: '#26c281', size: 28 },
+        { sym: '€', color: '#3aa5ff', size: 26 },
+        { sym: '£', color: '#e6a23c', size: 24 },
+        { sym: '¥', color: '#f0506a', size: 24 }
+      ];
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      for (let i = 0; i < characters.length; i++) {
+        const ch = characters[i];
+        const speed = 0.3 + i * 0.05;
+        const bob = Math.sin(time * 1.2 + i * 1.5) * 15;
+        const phase = time * speed + i * (Math.PI * 2 / characters.length);
+        const orbitR = 80 + i * 30;
+        const cx = globeX + Math.cos(phase) * orbitR * 0.4;
+        const cy = globeY + bob + Math.sin(phase * 0.7) * 25;
+        const grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, ch.size * 1.5);
+        grd.addColorStop(0, ch.color + '30');
+        grd.addColorStop(1, ch.color + '00');
+        ctx.fillStyle = grd;
+        ctx.beginPath();
+        ctx.arc(cx, cy, ch.size * 1.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.font = `bold ${ch.size}px var(--mono), monospace`;
+        ctx.fillStyle = ch.color + 'cc';
+        ctx.fillText(ch.sym, cx, cy);
+      }
+      ctx.restore();
+
       raf = requestAnimationFrame(draw);
     };
     raf = requestAnimationFrame(draw);

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { Logo } from '@/components/Logo';
 
-/** 3D cartoon currency scene — client-only (WebGL). */
+/** Abstract futuristic 3D scene — client-only (WebGL). */
 const HeroCanvas3D = dynamic(() => import('@/components/HeroCanvas3D'), {
   ssr: false,
   loading: () => <div style={{ width: '100%', height: '100%' }} />
@@ -13,8 +13,8 @@ const HeroCanvas3D = dynamic(() => import('@/components/HeroCanvas3D'), {
 
 /**
  * Landing page — futuristic, minimalist, single-screen hero with:
- * - true 3D cartoon currency scene (EUR vs USD standoff, orbiting coins)
- * - coins with eyes that follow the mouse (desktop)
+ * - abstract 3D market scene (grid horizon, wireframe globe, pulse bars)
+ * - soft camera parallax following the pointer
  * - start button → dashboard
  * - no login, no auth, no friction
  */
