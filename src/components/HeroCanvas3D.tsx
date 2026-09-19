@@ -2,10 +2,9 @@
 
 /**
  * Abstract futuristic hero scene (three.js + @react-three/fiber):
- *  - perspective grid floor receding to a glowing horizon
  *  - slow-rotating wireframe globe + two orbital rings
- *  - rising "price pulse" bars and a drifting particle field
- *  - soft pointer parallax on the camera (no cartoon faces)
+ *  - a drifting particle field
+ *  - soft pointer parallax on the camera (no cartoon faces, no floating boxes)
  * Rendered client-only (dynamic import, ssr:false).
  */
 
@@ -26,41 +25,6 @@ function Rig({ pointer }: { pointer: PointerRef }) {
     state.camera.lookAt(0, 0.4, 0);
   });
   return null;
-}
-
-/** Endless glowing grid floor receding to the horizon. */
-function GridFloor() {
-  const grp = useRef<THREE.Group>(null);
-  useFrame((state) => {
-    if (grp.current) grp.current.position.z = (state.clock.elapsedTime * 0.6) % 1;
-  });
-  const cells = useMemo(() => {
-    const rows = 26;
-    const cols = 26;
-    const out: Array<{ key: string; x: number; z: number; opacity: number; near: boolean }> = [];
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        out.push({
-          key: `${r}-${c}`,
-          x: (c - cols / 2) * 0.5,
-          z: -r * 0.5,
-          opacity: Math.max(0.05, 0.34 - r * 0.012),
-          near: r < 3
-        });
-      }
-    }
-    return out;
-  }, []);
-  return (
-    <group ref={grp} position={[0, -1.1, 2]}>
-      {cells.map((c) => (
-        <mesh key={c.key} position={[c.x, 0, c.z]} rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[0.44, 0.44]} />
-          <meshBasicMaterial color={c.near ? '#3aa5ff' : '#17304d'} transparent opacity={c.opacity} />
-        </mesh>
-      ))}
-    </group>
-  );
 }
 
 /** Slow rotating wireframe globe at the vanishing point. */
@@ -97,41 +61,6 @@ function Rings() {
         <torusGeometry args={[2.9, 0.01, 8, 120]} />
         <meshBasicMaterial color="#26c281" transparent opacity={0.45} />
       </mesh>
-    </group>
-  );
-}
-
-/** Rising "price pulse" bars along the horizon — abstract market motion. */
-function PulseBars() {
-  const bars = useMemo(
-    () =>
-      Array.from({ length: 22 }, (_, i) => ({
-        x: (i - 10.5) * 0.42,
-        phase: i * 0.55,
-        speed: 0.7 + (i % 5) * 0.16,
-        hue: i % 2 === 0 ? '#26c281' : '#3aa5ff'
-      })),
-    []
-  );
-  const refs = useRef<Array<THREE.Mesh | null>>([]);
-  useFrame((state) => {
-    const t = state.clock.elapsedTime;
-    refs.current.forEach((m, i) => {
-      if (!m) return;
-      const b = bars[i];
-      const h = 0.18 + Math.abs(Math.sin(t * b.speed + b.phase)) * 0.85;
-      m.scale.y = h;
-      m.position.y = -0.92 + (h * 0.9) / 2;
-    });
-  });
-  return (
-    <group>
-      {bars.map((b, i) => (
-        <mesh key={i} ref={(el) => { refs.current[i] = el; }} position={[b.x, -0.92, 1.6]}>
-          <boxGeometry args={[0.14, 0.9, 0.14]} />
-          <meshBasicMaterial color={b.hue} transparent opacity={0.5} />
-        </mesh>
-      ))}
     </group>
   );
 }
@@ -183,10 +112,8 @@ export default function HeroCanvas3D() {
       <fog attach="fog" args={['#070a10', 6, 14]} />
       <ambientLight intensity={0.45} />
       <directionalLight position={[4, 6, 5]} intensity={0.9} color="#bcd9ff" />
-      <GridFloor />
       <Globe />
       <Rings />
-      <PulseBars />
       <Dust />
       <Rig pointer={pointer} />
     </Canvas>

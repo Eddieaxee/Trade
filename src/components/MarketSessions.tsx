@@ -24,6 +24,12 @@ function dstShift(offsetBase: number, now: Date): number {
   return 0;
 }
 
+function fmtHm(d: Date): string {
+  const hh = String(d.getUTCHours()).padStart(2, '0');
+  const mm = String(d.getUTCMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
 function fmtHms(d: Date): string {
   const hh = String(d.getUTCHours()).padStart(2, '0');
   const mm = String(d.getUTCMinutes()).padStart(2, '0');
@@ -80,12 +86,13 @@ function sessionStatus(
     close: closeUtc,
     offset,
     status,
-    localTime: fmtHms(local),
-    utcTime: fmtHms(now)
+    localTime: fmtHm(local), // dashboard cards: HH:MM (no live seconds)
+    utcTime: fmtHms(now)     // header clocks keep HH:MM:SS
   };
 }
 
-/** FX market sessions: Sydney → Tokyo → London → New York, tracked live to the second. */
+/** Live market clock + session bar — header only. UTC + WAT tick every second
+ *  (HH:MM:SS); session chips show a static HH:MM local time + status icon. */
 export function getSessions(now: Date): SessionInfo[] {
   return [
     sessionStatus('Sydney', 'AUS', '🇦🇺', 22, 7, 10, now),
@@ -109,8 +116,8 @@ const STATUS_LABEL: Record<SessionInfo['status'], string> = {
   closed: 'closed',
 };
 
-/** Live market clock + session bar — mounted in the app header so market state
- *  is visible everywhere and "market closed" tints the whole app. */
+/** Live market clock + session bar — header only. UTC + WAT tick every second
+ *  (HH:MM:SS); session chips show a static HH:MM local time + status icon. */
 export default function MarketSessions() {
   const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {

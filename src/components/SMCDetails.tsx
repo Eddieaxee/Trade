@@ -26,7 +26,7 @@ export default function SMCDetails({ a }: { a: PairAnalysis }) {
           <span className="chip red">LH/LL bearish</span>
           <span className="chip blue">STRONG swept with displacement</span>
           <span className="chip gray">WEAK failed to break</span>
-          <span className="tone-muted" style={{ fontSize: 11 }}>showing latest {Math.min(smc.swingLabels.length, 8)} of {smc.swingLabels.length}</span>
+          <span className="tone-muted" style={{ fontSize: 11 }}>showing latest {Math.min(smc.swingLabels.length, 10)} of {smc.swingLabels.length}</span>
         </div>
         <div style={{ overflowX: 'auto' }}>
           <table className="grid-table">
@@ -34,7 +34,7 @@ export default function SMCDetails({ a }: { a: PairAnalysis }) {
               <tr><th>#</th><th>Swing</th><th>Label</th><th>Strength</th><th>Price</th><th>Time</th></tr>
             </thead>
             <tbody>
-              {smc.swingLabels.slice(-8).map((s, i, arr) => (
+              {smc.swingLabels.slice(-10).map((s, i, arr) => (
                 <tr key={i}>
                   <td className="tone-muted">{smc.swingLabels.length - arr.length + i + 1}</td>
                   <td>{s.kind === 'high' ? 'Swing High' : 'Swing Low'}</td>

@@ -7,7 +7,7 @@
 // in the 1m feed (keyless providers floor at 1m) and is marked with "†".
 
 import type { Candle, Granularity, StrengthMatrix, StrengthTFColumn } from '@/lib/types';
-import { CURRENCIES, STAR_PAIRS, TTL_STRENGTH_MATRIX } from '@/lib/constants';
+import { CURRENCIES, STAR_PAIRS, TTL_STRENGTH_MATRIX, canonicalPair } from '@/lib/constants';
 import { cacheGet, cacheKey, cacheSet } from '@/lib/cache';
 import { getCandlesCached } from '@/lib/providers';
 import { clamp, mean, stdev } from '@/lib/utils';
@@ -62,7 +62,7 @@ function zscoreMap(changes: Partial<Record<string, number>>): Record<string, num
   return out;
 }
 
-/** Best directional pair per TF: highest-scoring currency vs lowest. */
+/** Best directional pair per TF: highest-scoring currency vs lowest (canonical order). */
 export function bestPairFor(col: StrengthTFColumn): { symbol: string; spread: number } | null {
   const entries = CURRENCIES
     .map((c) => ({ c, s: col.scores[c] }))
@@ -71,7 +71,7 @@ export function bestPairFor(col: StrengthTFColumn): { symbol: string; spread: nu
   const sorted = [...entries].sort((a, b) => b.s - a.s);
   const hi = sorted[0];
   const lo = sorted[sorted.length - 1];
-  return { symbol: hi.c + lo.c, spread: Math.round((hi.s - lo.s) * 10) / 10 };
+  return { symbol: canonicalPair(hi.c, lo.c), spread: Math.round((hi.s - lo.s) * 10) / 10 };
 }
 
 type StarSeries = Record<string, Candle[]>;

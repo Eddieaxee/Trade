@@ -32,7 +32,16 @@ function fmtAgo(seconds: number): string {
   return `${Math.round(seconds / 86400)}d ago`;
 }
 function fmtWhen(ts: number): string {
-  return new Date(ts * 1000).toUTCString().replace("GMT", "UTC").replace(/, \d{4}$/, "");
+  const d = new Date(ts * 1000);
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const wd = days[d.getUTCDay()];
+  const mo = months[d.getUTCMonth()];
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  const yyyy = d.getUTCFullYear();
+  const hh = String(d.getUTCHours()).padStart(2, '0');
+  const mm = String(d.getUTCMinutes()).padStart(2, '0');
+  return `${wd} ${dd} ${mo} ${yyyy} · ${hh}:${mm} UTC`;
 }
 const IMPACT_LABEL: Record<string, { label: string; tone: string }> = {
   high: { label: "HIGH", tone: "red" },
@@ -130,18 +139,12 @@ export default function NewsRoom() {
   const feed = [...items].sort((a, b) => (IMPACT_ORDER[a.impact] - IMPACT_ORDER[b.impact]) || b.publishedAt - a.publishedAt);
   // TAB 1 — strictly the latest 10 headlines, classified High → Medium → Low.
   const high = feed.slice(0, 10);
-  // TAB 2 — top 5 upcoming high-impact events, then last Friday's historical releases.
-  const upcomingHigh = calendar
-    .filter((c) => c.direction === "future" && c.impact === "high")
+  // TAB 2 — upcoming ONLY (when >= now, future-sorted, year-accurate), high-impact first.
+  const nowTs = Date.now() / 1000;
+  const upcoming = calendar
+    .filter((c) => c.direction === "future" && c.when >= nowTs - 60)
     .sort((a, b) => a.when - b.when)
     .slice(0, 5);
-  const upcoming = upcomingHigh.length ? upcomingHigh : calendar.filter((c) => c.direction === "future").slice(0, 5);
-  const fridayReleases = calendar
-    .filter((c) => c.direction === "past" && new Date(c.when * 1000).getUTCDay() === 5)
-    .sort((a, b) => b.when - a.when)
-    .slice(0, 4);
-  const recentReleases = fridayReleases.length ? fridayReleases : calendar.filter((c) => c.direction === "past").slice(0, 4);
-
   const flips = [...alerts]
     .filter((a) => ["MACD cross", "Momentum spike", "RSI extreme", "Technical alignment"].includes(a.kind))
     .sort((a, b) => b.urgency - a.urgency)
@@ -185,19 +188,6 @@ export default function NewsRoom() {
                 <table className="grid-table">
                   <thead><tr><th>Currency</th><th>Event</th><th>When</th><th>Impact</th><th>Forecast</th><th>Prev</th><th></th></tr></thead>
                   <tbody>{upcoming.map((e, i) => <CalendarRow key={`up-${i}`} e={e} />)}</tbody>
-                </table>
-              </div>
-            )}
-          </div>
-          <div className="panel">
-            <h3>Last Friday's historical releases</h3>
-            {recentReleases.length === 0 ? (
-              <p className="tone-muted">No macro releases in the recent window.</p>
-            ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table className="grid-table">
-                  <thead><tr><th>Currency</th><th>Event</th><th>When</th><th>Impact</th><th>Forecast</th><th>Prev</th></tr></thead>
-                  <tbody>{recentReleases.map((e, i) => <CalendarRow key={`past-${i}`} e={e} />)}</tbody>
                 </table>
               </div>
             )}

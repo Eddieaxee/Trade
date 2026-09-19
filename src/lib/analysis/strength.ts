@@ -1,15 +1,16 @@
 // ── Currency-strength engine ─────────────────────────────────────────────────
-// Method: from a series of EUR-based reference rates derive the full cross
-// matrix (8 currencies → 28 pairs). Raw percent-change per pair over 1d / 7d
-// is averaged onto each currency across the 7 direct pairs it forms
-// (base sign +, quote sign −, inversions handled), then z-scored ACROSS THE
-// 8 CURRENCIES (not an isolated Euro index) so no single-currency anchor can
-// distort the baseline. EUR's score is the implicit residual → sum ≈ 0
-// (relative strength). All 28 pair symbols follow institutional base/quote
-// standards (EUR/USD, USD/JPY, GBP/JPY — never USD/EUR).
+// Full 28-pair cross-matrix summation (no Euro anchor):
+//  1. From EUR-based reference rates derive every cross AB (28 pairs).
+//  2. Raw % change per pair over 1d / 7d.
+//  3. Average each currency's signed changes across the 7 direct pairs it forms
+//     (base +, quote − → inversions handled).
+//  4. Z-score ACROSS THE 8 CURRENCIES (cross-sectional), then blend 1d/7d.
+// EUR's score is the implicit residual → Σ ≈ 0 (relative strength).
+// Symbols follow institutional base/quote standards via canonicalPair
+// (USDJPY, GBPJPY … — never JPYUSD or USDEUR).
 
 import type { CurrencyStrength, RatePoint, StrengthResult } from '@/lib/types';
-import { CURRENCIES } from '@/lib/constants';
+import { CURRENCIES, canonicalPair } from '@/lib/constants';
 import { clamp, mean, pctChange, stdev } from '@/lib/utils';
 
 export interface CrossPair {
@@ -22,7 +23,7 @@ export function allCrossPairs(ccies: string[]): CrossPair[] {
   const out: CrossPair[] = [];
   for (let i = 0; i < ccies.length; i++) {
     for (let j = i + 1; j < ccies.length; j++) {
-      out.push({ base: ccies[i], quote: ccies[j], symbol: ccies[i] + ccies[j] });
+      out.push({ base: ccies[i], quote: ccies[j], symbol: canonicalPair(ccies[i], ccies[j]) });
     }
   }
   return out;

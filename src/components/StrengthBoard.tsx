@@ -2,32 +2,9 @@
 
 import { useMemo } from 'react';
 import type { StrengthResult } from '@/lib/types';
-import Icon from '@/components/Icon';
 
-function TrendSpark({ score }: { score: number }) {
-  const up = score >= 0;
-  const vals = Array.from({ length: 8 }, (_, i) => {
-    const p = i / 7;
-    const base = up ? 14 - p * 4 : 6 + p * 4;
-    return `${i * 6 + 2},${16 - base}`;
-  }).join(' ');
-  return (
-    <svg width="44" height="18" viewBox="0 0 44 18" aria-hidden="true">
-      <polyline
-        points={vals}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={1.6}
-        strokeLinejoin="round"
-        strokeLinecap="round"
-        style={{ color: up ? 'var(--up)' : 'var(--down)' }}
-      />
-    </svg>
-  );
-}
-
-/** Relative currency-strength board — clean status pills with a trend sparkline.
- *  One pill per currency: icon · code · signed score · 1d delta · live trend line. */
+/** Relative currency-strength board — ranked status cards (not tight pills).
+ *  Each card: rank · code · signed score bar · 1d/7d deltas · momentum arrow. */
 export default function StrengthBoard({ strength }: { strength: StrengthResult | null }) {
   const sorted = useMemo(
     () => (strength?.currencies ? [...strength.currencies].sort((a, b) => b.score - a.score) : []),
@@ -38,25 +15,35 @@ export default function StrengthBoard({ strength }: { strength: StrengthResult |
     return <div className="note-list" style={{ paddingLeft: 0 }}>Strength feed unavailable.</div>;
   }
 
+  const medal = (i: number) => (i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`);
+
   return (
-    <div className="strength-pill-grid">
-      {sorted.map((c) => {
+    <div className="strength-grid">
+      {sorted.map((c, i) => {
         const pos = c.score > 0.5;
         const neg = c.score < -0.5;
         const cls = pos ? 'strong' : neg ? 'weak' : 'neutral';
-        const icon = pos ? 'trending-up' : neg ? 'trending-down' : 'layers';
+        const arrow = c.delta1d > 0.05 ? '▲' : c.delta1d < -0.05 ? '▼' : '▬';
+        const barPct = Math.min(100, (Math.abs(c.score) / 42) * 100);
         return (
-          <span
+          <div
             key={c.code}
-            className={`strength-pill ${cls}`}
+            className={`strength-card ${cls}`}
             title={`${c.code} 1d ${c.delta1d > 0 ? '+' : ''}${c.delta1d.toFixed(2)}% · 7d ${c.delta7d > 0 ? '+' : ''}${c.delta7d.toFixed(2)}%`}
           >
-            <Icon name={icon} size={11} />
-            <span style={{ fontFamily: 'var(--mono)' }}>{c.code}</span>
-            <b>{c.score > 0 ? '+' : ''}{c.score.toFixed(1)}</b>
-            <TrendSpark score={c.score} />
-            <em style={{ fontSize: 10.5 }}>{c.delta1d > 0 ? '+' : ''}{c.delta1d.toFixed(2)}%</em>
-          </span>
+            <div className="strength-top">
+              <span className="strength-rank">{medal(i)}</span>
+              <span className="strength-code">{c.code}</span>
+              <span className={`strength-arrow ${pos ? 'up' : neg ? 'down' : ''}`}>{arrow}</span>
+            </div>
+            <div className="strength-score">{c.score > 0 ? '+' : ''}{c.score.toFixed(1)}</div>
+            <div className="strength-bar"><span style={{ width: `${barPct}%` }} className={pos ? 'up' : neg ? 'down' : 'flat'} /></div>
+            <div className="strength-deltas">
+              <span className={c.delta1d >= 0 ? 'tone-up' : 'tone-down'}>1d {c.delta1d > 0 ? '+' : ''}{c.delta1d.toFixed(2)}%</span>
+              <span className="tone-muted">·</span>
+              <span className={c.delta7d >= 0 ? 'tone-up' : 'tone-down'}>7d {c.delta7d > 0 ? '+' : ''}{c.delta7d.toFixed(2)}%</span>
+            </div>
+          </div>
         );
       })}
     </div>

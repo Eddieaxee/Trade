@@ -1,11 +1,7 @@
 // ── News Room: live FX news + probable-action engine ────────────────────────
-// Sources are keyless public RSS feeds (FXStreet, ForexLive, Investing.com,
-// Yahoo Finance). Each headline is scored for currency impact with a curated
-// keyword lexicon (hawkish/dovish/CPI/NFP/risk flows). The strongest opposing
-// currency pair becomes the "probable action" with a horizon estimate.
-// Combined with LIVE technical alerts computed from real candles — nothing
-// is invented; when a feed fails it is skipped and noted.
-
+// Calendar: primary = live ForexFactory weekly XML (keyless public feed, real
+// event names/dates/impact/forecast/previous). Deterministic schedule only as
+// a last-resort fallback when the feed is unreachable.
 import type { Granularity, Pair } from "@/lib/types";
 import { getCandlesCached } from "@/lib/providers";
 import { cacheGet, cacheKey, cacheSet } from "@/lib/cache";
@@ -477,14 +473,87 @@ async function fetchAlerts(): Promise<TechAlert[]> {
 
 const TTL = 180; // 3 minutes — a newsroom should breathe
 
+/** Last Friday (UTC) relative to `now` — strict calendar Friday, not "96h ago". */
+function lastFridayUTC(now: Date): Date {
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const dow = d.getUTCDay(); // 0=Sun..6=Sat; Friday=5
+  const back = (dow - 5 + 7) % 7 || 7; // if today IS Friday, take the previous one
+  d.setUTCDate(d.getUTCDate() - back);
+  return d;
+}
+
+/** ForexFactory weekly calendar XML (keyless, CORS-open, real event data). */
+const FF_XML_URL = 'https://nfs.faireconomy.media/ff_calendar_thisweek.xml';
+
+function ffText(block: string, tag: string): string {
+  const m = new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`).exec(block);
+  return m ? m[1].trim().replace(/<!\[CDATA\[|\]\]>/g, '') : '';
+}
+
 /**
- * Keyless, deterministic economic-calendar builder.
- * Models the recurring high-impact macro cadence the FX market trades on
- * (NFP on the first Friday of the month, US CPI ~monthly, PCE ~monthly,
- * US GDP quarter-end, and the AUD/CAD/NZD employment cadence).
- * Numeric releases are forecast-only (actuals/prev = null) — this is a live
- * "what to watch" schedule, not a fabricated data dump. Past occurrences in
- * the last 96h are returned as historical context.
+ * Live calendar from ForexFactory. Returns real dated events with impact +
+ * forecast + previous. Strictly filters: upcoming = when >= now (future only,
+ * year-accurate UTC dates); last-Friday releases = past events dated on the
+ * most recent Friday. Never fabricates numbers — empty fields stay null.
+ */
+async function fetchForexFactoryCalendar(now: Date): Promise<EconEvent[] | null> {
+  const res = await fetch(FF_XML_URL, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FXPulse/1.0)', Accept: 'application/xml' },
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!res.ok) return null;
+  const xml = await res.text();
+  const blocks = xml.match(/<event>[\s\S]*?<\/event>/g) ?? [];
+  const ts = Math.floor(now.getTime() / 1000);
+  const friday = lastFridayUTC(now);
+  const fy = friday.getUTCFullYear();
+  const fm = friday.getUTCMonth();
+  const fd = friday.getUTCDate();
+  const out: EconEvent[] = [];
+  for (const b of blocks) {
+    const country = ffText(b, 'country');
+    const title = ffText(b, 'title');
+    const dateRaw = ffText(b, 'date');
+    const impactRaw = ffText(b, 'impact').toLowerCase();
+    const forecast = ffText(b, 'forecast') || null;
+    const previous = ffText(b, 'previous') || null;
+    if (!title || !dateRaw) continue;
+    // Format: "2026-09-18T13:30:00-04:00" — Date.parse handles the offset.
+    const ms = Date.parse(dateRaw);
+    if (Number.isNaN(ms)) continue;
+    const when = Math.floor(ms / 1000);
+    const impact: EconEvent['impact'] =
+      impactRaw.includes('high') ? 'high' : impactRaw.includes('medium') ? 'medium' : 'low';
+    const d = new Date(ms);
+    const isLastFriday =
+      d.getUTCFullYear() === fy && d.getUTCMonth() === fm && d.getUTCDate() === fd;
+    const direction: EconEvent['direction'] = when >= ts ? 'future' : 'past';
+    // Keep: all future events + past events actually dated last Friday.
+    if (direction === 'future' || isLastFriday) {
+      out.push({
+        symbol: country || 'ALL',
+        event: title,
+        when,
+        impact,
+        actual: null,
+        previous,
+        forecast,
+        direction,
+      });
+    }
+  }
+  out.sort((a, b) => a.when - b.when);
+  return out;
+}
+
+/**
+ * Keyless, deterministic economic-calendar FALLBACK (only when the live feed
+ * is unreachable). Models the recurring high-impact macro cadence the FX
+ * market trades on (NFP on the first Friday of the month, US CPI ~monthly,
+ * PCE ~monthly, US GDP quarter-end, and the AUD/CAD/NZD employment cadence).
+ * All entries are future-dated unlock times + clearly labelled estimates:
+ * previous/forecast show the string "est." so the UI never presents them as
+ * official prints.
  */
 const MACRO_SCHEDULE: Array<{
   symbol: string;
@@ -553,39 +622,238 @@ function nextRelease(kind: 'nfp' | 'cpi' | 'pce' | 'gdp' | 'emp', now: Date): nu
 export function buildCalendar(now = new Date()): EconEvent[] {
   const ts = now.getTime() / 1000;
   const out: EconEvent[] = [];
-  for (const ev of MACRO_SCHEDULE) {
-    const when = nextRelease(ev.kind, now);
-    out.push({
-      symbol: ev.symbol,
-      event: ev.event,
-      when,
-      impact: ev.impact,
-      actual: null,
-      previous: null,
-      forecast: null,
-      direction: when > ts ? 'future' : 'past',
-    });
-    const span = ev.kind === 'gdp' ? 90 : 28;
-    const past = (when - span * 86400000) / 1000;
-    if (ts - past < 96 * 3600 && past > ts - 96 * 3600) {
-      out.push({ symbol: ev.symbol, event: ev.event, when: past, impact: ev.impact, actual: null, previous: null, forecast: null, direction: 'past' });
-    }
+
+  const nextUSDIndex = nextUSDRelease(now);
+  const nextEURIndex = nextEURRelease(now);
+  const nextGBPIndex = nextGBPRelease(now);
+  const nextJPYIndex = nextJPYRelease(now);
+  const nextAUDEmp = nextAUDRelease(now);
+  const nextCADIndex = nextCADRelease(now);
+
+  const candidates: Array<EconEvent | null> = [
+    nextUSDIndex > ts
+      ? {
+          symbol: 'USD',
+          event: 'US Non-Farm Payrolls (NFP)',
+          when: nextUSDIndex * 1000,
+          impact: 'high',
+          actual: null,
+          previous: 'est.',
+          forecast: 'est.',
+          direction: 'future',
+        }
+      : null,
+
+    nextEURIndex > ts
+      ? {
+          symbol: 'USD',
+          event: 'US Core CPI (YoY)',
+          when: nextEURIndex * 1000,
+          impact: 'high',
+          actual: null,
+          previous: 'est.',
+          forecast: 'est.',
+          direction: 'future',
+        }
+      : null,
+
+    nextGBPIndex > ts
+      ? {
+          symbol: 'USD',
+          event: 'US Advance GDP (QoQ, annualized)',
+          when: nextGBPIndex * 1000,
+          impact: 'high',
+          actual: null,
+          previous: 'est.',
+          forecast: 'est.',
+          direction: 'future',
+        }
+      : null,
+
+    nextJPYIndex > ts
+      ? {
+          symbol: 'EUR',
+          event: 'ECB Interest Rate Decision',
+          when: nextJPYIndex * 1000,
+          impact: 'high',
+          actual: null,
+          previous: 'est.',
+          forecast: 'est.',
+          direction: 'future',
+        }
+      : null,
+
+    nextAUDEmp > ts
+      ? {
+          symbol: 'AUD',
+          event: 'AUD Employment Change (Net)',
+          when: nextAUDEmp * 1000,
+          impact: 'high',
+          actual: null,
+          previous: 'est.',
+          forecast: 'est.',
+          direction: 'future',
+        }
+      : null,
+
+    nextCADIndex > ts
+      ? {
+          symbol: 'CAD',
+          event: 'CAD Employment Change (Net)',
+          when: nextCADIndex * 1000,
+          impact: 'high',
+          actual: null,
+          previous: 'est.',
+          forecast: 'est.',
+          direction: 'future',
+        }
+      : null,
+  ];
+
+  for (const ev of candidates) {
+    if (!ev) continue;
+    out.push(ev);
   }
+
+  // Keep only the next high-impact events, sorted by time.
   out.sort((a, b) => a.when - b.when);
-  return out;
+  return out.slice(0, 8);
+}
+
+/**
+ * Deterministic helpers for recurring high-impact scheduled releases.
+ */
+
+function nextUSDRelease(now: Date): number {
+  const Y = now.getUTCFullYear();
+  const M = now.getUTCMonth();
+  const D = now.getUTCDate();
+  const today = Date.UTC(Y, M, D, 12, 30, 0);
+  const pick = (y: number, m: number, d: number) => Date.UTC(y, m, d, 13, 30, 0);
+  const firstFriday = (y: number, m: number) => {
+    const firstDay = new Date(Date.UTC(y, m, 1)).getUTCDay();
+    return 1 + ((5 - firstDay + 7) % 7);
+  };
+  const fri = firstFriday(Y, M);
+  if (pick(Y, M, fri) > today) return pick(Y, M, fri);
+  const nm = M + 1 >= 12 ? 0 : M + 1;
+  const ny = M + 1 >= 12 ? Y + 1 : Y;
+  return pick(ny, nm, firstFriday(ny, nm));
+}
+
+function nextEURRelease(now: Date): number {
+  const Y = now.getUTCFullYear();
+  const M = now.getUTCMonth();
+  const D = now.getUTCDate();
+  const today = Date.UTC(Y, M, D, 12, 30, 0);
+  const pick = (y: number, m: number, d: number) => Date.UTC(y, m, d, 13, 30, 0);
+  let y = Y, mo = M;
+  for (let i = 0; i < 13; i++) {
+    const dom = 14;
+    const cand = pick(y, mo, dom);
+    if (cand > today) return cand;
+    mo += 1;
+    if (mo >= 12) { mo = 0; y += 1; }
+  }
+  return today;
+}
+
+function nextGBPRelease(now: Date): number {
+  const Y = now.getUTCFullYear();
+  const M = now.getUTCMonth();
+  const D = now.getUTCDate();
+  const today = Date.UTC(Y, M, D, 12, 30, 0);
+  const pick = (y: number, m: number, d: number) => Date.UTC(y, m, d, 13, 30, 0);
+  let y = Y, mo = M;
+  for (let i = 0; i < 13; i++) {
+    const dom = 28;
+    const cand = pick(y, mo, dom);
+    if (cand > today) return cand;
+    mo += 1;
+    if (mo >= 12) { mo = 0; y += 1; }
+  }
+  return today;
+}
+
+function nextJPYRelease(now: Date): number {
+  const Y = now.getUTCFullYear();
+  const M = now.getUTCMonth();
+  const D = now.getUTCDate();
+  const today = Date.UTC(Y, M, D, 12, 30, 0);
+  const pick = (y: number, m: number, d: number) => Date.UTC(y, m, d, 13, 45, 0);
+  let y = Y, mo = M;
+  for (let i = 0; i < 13; i++) {
+    const base = new Date(Date.UTC(y, mo, 1));
+    const dayOfWeek = base.getUTCDay();
+    const firstThursday = 1 + ((4 - dayOfWeek + 7) % 7);
+    const cand = pick(y, mo, firstThursday + 7);
+    if (cand > today) return cand;
+    mo += 1;
+    if (mo >= 12) { mo = 0; y += 1; }
+  }
+  return today;
+}
+
+function nextAUDRelease(now: Date): number {
+  const Y = now.getUTCFullYear();
+  const M = now.getUTCMonth();
+  const D = now.getUTCDate();
+  const today = Date.UTC(Y, M, D, 0, 30, 0);
+  const pick = (y: number, m: number, d: number) => Date.UTC(y, m, d, 0, 30, 0);
+  const firstThursday = (y: number, m: number) => {
+    const firstDay = new Date(Date.UTC(y, m, 1)).getUTCDay();
+    return 1 + ((4 - firstDay + 7) % 7);
+  };
+  const thu = firstThursday(Y, M);
+  if (pick(Y, M, thu) > today) return pick(Y, M, thu);
+  const nm = M + 1 >= 12 ? 0 : M + 1;
+  const ny = M + 1 >= 12 ? Y + 1 : Y;
+  return pick(ny, nm, firstThursday(ny, nm));
+}
+
+function nextCADRelease(now: Date): number {
+  const Y = now.getUTCFullYear();
+  const M = now.getUTCMonth();
+  const D = now.getUTCDate();
+  const today = Date.UTC(Y, M, D, 12, 30, 0);
+  const pick = (y: number, m: number, d: number) => Date.UTC(y, m, d, 13, 30, 0);
+  const firstFriday = (y: number, m: number) => {
+    const firstDay = new Date(Date.UTC(y, m, 1)).getUTCDay();
+    return 1 + ((5 - firstDay + 7) % 7);
+  };
+  const fri = firstFriday(Y, M);
+  if (pick(Y, M, fri) > today) return pick(Y, M, fri);
+  const nm = M + 1 >= 12 ? 0 : M + 1;
+  const ny = M + 1 >= 12 ? Y + 1 : Y;
+  return pick(ny, nm, firstFriday(ny, nm));
+}
+
+export async function buildLiveCalendar(now = new Date()): Promise<{ calendar: EconEvent[]; notes: string[] }> {
+  try {
+    const live = await fetchForexFactoryCalendar(now);
+    if (live && live.length) {
+      return { calendar: live, notes: ['Economic calendar: live ForexFactory weekly feed.'] };
+    }
+  } catch {
+    /* fall through to fallback */
+  }
+  return {
+    calendar: buildCalendar(now),
+    notes: ['Economic calendar: live feed unreachable — showing scheduled watch-list estimates (forecast/prev marked "est.").'],
+  };
 }
 
 export async function getNewsRoom(): Promise<NewsRoom> {
   const key = cacheKey('newsroom');
   const hit = await cacheGet<NewsRoom>(key);
   if (hit) return hit;
-  const [feedRes, alerts] = await Promise.all([fetchFeeds(), fetchAlerts()]);
+  const [feedRes, alerts, cal] = await Promise.all([fetchFeeds(), fetchAlerts(), buildLiveCalendar()]);
   const room: NewsRoom = {
     updatedAt: Math.floor(Date.now() / 1000),
     items: feedRes.items.slice(0, 24),
     alerts,
-    calendar: buildCalendar(),
-    notes: feedRes.notes,
+    calendar: cal.calendar,
+    notes: [...feedRes.notes, ...cal.notes],
   };
   cacheSet(key, room, TTL);
   return room;

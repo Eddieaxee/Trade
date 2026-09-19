@@ -4,6 +4,20 @@ import type { Granularity, Pair } from '@/lib/types';
 
 export const CURRENCIES = ['EUR', 'USD', 'GBP', 'JPY', 'CHF', 'AUD', 'CAD', 'NZD'];
 
+/**
+ * Institutional base/quote priority (never show inverted crosses like JPY/USD).
+ * Order: EUR > GBP > AUD > NZD > USD > CAD > CHF > JPY.
+ */
+const PAIR_PRIORITY = ['EUR', 'GBP', 'AUD', 'NZD', 'USD', 'CAD', 'CHF', 'JPY'];
+
+/** Canonical symbol for two currencies, e.g. JPY+USD → USDJPY, never JPYUSD. */
+export function canonicalPair(a: string, b: string): string {
+  const pa = PAIR_PRIORITY.indexOf(a);
+  const pb = PAIR_PRIORITY.indexOf(b);
+  if (pa === -1 || pb === -1) return a + b;
+  return pa <= pb ? a + b : b + a;
+}
+
 export const CURRENCY_NAMES: Record<string, string> = {
   EUR: 'Euro',
   USD: 'US Dollar',
@@ -19,12 +33,13 @@ function mkPair(symbol: string): Pair {
   return { symbol, base: symbol.slice(0, 3), quote: symbol.slice(3) };
 }
 
-/** All 28 majors + minors formed from the 8 supported currencies. */
+/** All 28 majors + minors in canonical base/quote order (e.g. USDJPY, never JPYUSD). */
 export function allPairs(): Pair[] {
   const out: Pair[] = [];
   for (let i = 0; i < CURRENCIES.length; i++) {
     for (let j = i + 1; j < CURRENCIES.length; j++) {
-      out.push(mkPair(CURRENCIES[i] + CURRENCIES[j]));
+      const symbol = canonicalPair(CURRENCIES[i], CURRENCIES[j]);
+      out.push(mkPair(symbol));
     }
   }
   return out;
