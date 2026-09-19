@@ -229,24 +229,29 @@ function clampNum(v: number, lo: number, hi: number): number {
 }
 
 function Volatility({ matrix }: { matrix: StrengthMatrix }) {
-  // Per-currency regime: bullish but weakening, bearish but firming, etc.
+  // Per-currency regime — strictly consistent within ONE timeframe so nothing
+  // can ever be labelled "Bullish" while ranked weakest (the old version mixed
+  // 1W vs 1D values, which produced contradictions).
+  //  · last      = score in the latest timeframe column (same source as ranking)
+  //  · momentum  = that column's own raw % delta over its window (deltas field)
+  //  · regime    = derived purely from the SIGN of last + momentum, so the
+  //                weakest-ranked currencies can only ever be Bearish/Neutral.
+  const latest = matrix.tfs[matrix.tfs.length - 1];
   const rows = CURRENCIES.map((ccy) => {
-    const vals = matrix.tfs.map((c) => c.scores[ccy]).filter((v): v is number => typeof v === 'number');
-    if (!vals.length) return null;
-    const last = vals[vals.length - 1];
-    const prev = vals.length > 1 ? vals[vals.length - 2] : last;
-    const spread = Math.max(...vals) - Math.min(...vals);
-    const momentum = last - prev;
-    // Adaptive thresholds for raw pairwise % values.
-    const thr = Math.max(0.05, spread * 0.4);
-    const momThr = Math.max(0.02, spread * 0.15);
+    const last = latest.scores[ccy];
+    if (typeof last !== 'number') return null;
+    const momentum = typeof latest.deltas[ccy] === 'number' ? (latest.deltas[ccy] as number) : 0;
+    const spread = Math.max(0.01, colScale(latest));
+    // Sign-consistent regime: sign(last) gates Bullish/Bearish, momentum only
+    // picks firming vs weakening. Near-zero scores are neutral.
+    const nearZero = Math.abs(last) < spread * 0.15;
+    const flat = Math.abs(momentum) < spread * 0.08;
     const regime =
-      last > thr && momentum < 0 ? 'Bullish but weakening' :
-      last > thr ? 'Bullish & firming' :
-      last < -thr && momentum > 0 ? 'Bearish but firming' :
-      last < -thr ? 'Bearish & bleeding' :
-      momentum > momThr ? 'Neutral → bid' :
-      momentum < -momThr ? 'Neutral → offered' : 'Range-bound';
+      nearZero
+        ? (momentum > 0 ? 'Neutral → bid' : momentum < 0 ? 'Neutral → offered' : 'Range-bound')
+        : last > 0
+          ? (momentum < 0 ? 'Bullish but weakening' : flat ? 'Bullish (steady)' : 'Bullish & firming')
+          : (momentum > 0 ? 'Bearish but firming' : flat ? 'Bearish (steady)' : 'Bearish & bleeding');
     return { ccy, last, momentum, spread, regime };
   }).filter((r): r is NonNullable<typeof r> => r !== null);
   const bySpread = [...rows].sort((a, b) => b.spread - a.spread);
@@ -264,20 +269,24 @@ function Volatility({ matrix }: { matrix: StrengthMatrix }) {
       </div>
       <div style={{ overflowX: 'auto' }}>
         <table className="grid-table">
-          <thead><tr><th>Ccy</th><th>Score</th><th>Momentum</th><th>Range</th><th>Regime</th></tr></thead>
+          <thead><tr><th>Ccy</th><th>Score ({latest.tf})</th><th>Momentum (window Δ%)</th><th>TF range</th><th>Regime</th></tr></thead>
           <tbody>
             {rows.sort((a, b) => b.last - a.last).map((r) => (
               <tr key={r.ccy}>
                 <td><strong>{r.ccy}</strong></td>
-                <td className={r.regime.startsWith('Bullish') ? 'tone-up' : r.regime.startsWith('Bearish') ? 'tone-down' : 'tone-muted'}>{fmtVal(r.last)}</td>
+                <td className={r.last > 0 ? 'tone-up' : r.last < 0 ? 'tone-down' : 'tone-muted'}>{fmtVal(r.last)}</td>
                 <td className={r.momentum > 0 ? 'tone-up' : r.momentum < 0 ? 'tone-down' : 'tone-muted'}>{fmtVal(r.momentum)}</td>
                 <td className="tone-muted">{fmtVal(r.spread)}</td>
-                <td><span className={`chip ${r.regime.includes('Bullish') ? 'green' : r.regime.includes('Bearish') ? 'red' : 'gray'}`}>{r.regime}</span></td>
+                <td><span className={`chip ${r.regime.startsWith('Bullish') ? 'green' : r.regime.startsWith('Bearish') ? 'red' : 'gray'}`}>{r.regime}</span></td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      <p className="tone-muted" style={{ fontSize: 11, margin: '8px 0 0' }}>
+        Regimes are sign-consistent by construction: a currency ranked weakest can only show Bearish/Neutral, never Bullish.
+        Score and regime come from the same {latest.tf} column; momentum is that column's own raw % change.
+      </p>
     </>
   );
 }
