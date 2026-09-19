@@ -4,6 +4,8 @@ import Link from 'next/link';
 import type { MarketSnapshot } from '@/lib/types';
 import { fmtPct, fmtPrice } from '@/lib/utils';
 import Sparkline from '@/components/Sparkline';
+import MTFMini from '@/components/MTFMini';
+import Icon from '@/components/Icon';
 import ScoreBar from './ScoreBar';
 
 const biasChip = (b: string) => {
@@ -34,7 +36,7 @@ export default function PairTable({ snapshot }: { snapshot: MarketSnapshot }) {
   );
   return (
     <div className="panel">
-      <h3>Watchlist — price · deltas · range · tech · SMC · CRT · confluence</h3>
+      <h3><Icon name="target" size={13} style={{ marginRight: 4 }} />Watchlist — price · deltas · range · tech · SMC · CRT · confluence</h3>
       <div style={{ overflowX: 'auto' }}>
         <table className="grid-table">
           <thead>
@@ -47,7 +49,8 @@ export default function PairTable({ snapshot }: { snapshot: MarketSnapshot }) {
               <th>Technicals</th>
               <th>SMC</th>
               <th>CRT</th>
-              <th style={{ textAlign: 'right' }}>Confluence</th>
+                            <th style={{ textAlign: 'right' }}>Confluence</th>
+              <th>15m / 1h / 4h</th>
               <th>Chart</th>
             </tr>
           </thead>
@@ -87,7 +90,8 @@ export default function PairTable({ snapshot }: { snapshot: MarketSnapshot }) {
                       <div style={{ width: 54 }}><ScoreBar score={p.confluence.score} /></div>
                     </div>
                   </td>
-                  <td><Sparkline candles={p.candles.slice(-40)} /></td>
+                                <td><MTFMini symbol={p.pair.symbol} /></td>
+              <td><Sparkline candles={p.candles.slice(-40)} /></td>
                 </tr>
               );
             })}

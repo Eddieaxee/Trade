@@ -1,9 +1,12 @@
 // ── Currency-strength engine ─────────────────────────────────────────────────
 // Method: from a series of EUR-based reference rates derive the full cross
-// matrix (8 currencies → 28 pairs). Percent-change per pair over 1d / 7d is
-// z-scored *across pairs* (removes the common forex drift), then each currency
-// receives the mean of its signed pair scores (base sign +, quote sign −).
-// EUR's score is the implicit residual → sum of scores ≈ 0 (relative strength).
+// matrix (8 currencies → 28 pairs). Raw percent-change per pair over 1d / 7d
+// is averaged onto each currency across the 7 direct pairs it forms
+// (base sign +, quote sign −, inversions handled), then z-scored ACROSS THE
+// 8 CURRENCIES (not an isolated Euro index) so no single-currency anchor can
+// distort the baseline. EUR's score is the implicit residual → sum ≈ 0
+// (relative strength). All 28 pair symbols follow institutional base/quote
+// standards (EUR/USD, USD/JPY, GBP/JPY — never USD/EUR).
 
 import type { CurrencyStrength, RatePoint, StrengthResult } from '@/lib/types';
 import { CURRENCIES } from '@/lib/constants';
@@ -61,6 +64,41 @@ function zscores(values: number[]): number[] {
   return values.map((v) => (Number.isFinite(v) ? (v - m) / sd : 0));
 }
 
+/**
+ * Full 28-pair cross-matrix summation: average each currency's raw % changes
+ * across the 7 direct pairs it forms (inversions handled via sign).
+ */
+function perCurrencyMean(changes: number[], pairs: CrossPair[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const ccy of CURRENCIES) {
+    const vals: number[] = [];
+    pairs.forEach((p, idx) => {
+      if (p.base !== ccy && p.quote !== ccy) return;
+      if (!Number.isFinite(changes[idx])) return;
+      const sign = p.base === ccy ? 1 : -1;
+      vals.push(changes[idx] * sign);
+    });
+    out[ccy] = vals.length ? mean(vals) : 0;
+  }
+  return out;
+}
+
+/** Z-score across the 8 per-currency means — the non-anchored baseline. */
+function zscoreAcross(byCcy: Record<string, number>): Record<string, number> {
+  const vals = CURRENCIES.map((c) => byCcy[c]).filter((v) => Number.isFinite(v));
+  const out: Record<string, number> = {};
+  if (vals.length < 4) {
+    for (const c of CURRENCIES) out[c] = 0;
+    return out;
+  }
+  const sd = stdev(vals);
+  const m = mean(vals);
+  for (const c of CURRENCIES) {
+    out[c] = sd > 0 && Number.isFinite(byCcy[c]) ? (byCcy[c] - m) / sd : 0;
+  }
+  return out;
+}
+
 export function computeStrength(series: RatePoint[]): StrengthResult {
   const notes: string[] = [];
   const currencies: CurrencyStrength[] = [];
@@ -73,32 +111,33 @@ export function computeStrength(series: RatePoint[]): StrengthResult {
     return { updatedAt, source: 'none', currencies, notes };
   }
 
+  // Raw % change per pair, then per-currency mean across its 7 direct pairs.
   const change1d = windowChange(series, pairs, 86400);
   const change7d = windowChange(series, pairs, 7 * 86400);
-  const z1d = zscores(change1d);
-  const z7d = zscores(change7d);
+
+  const avg1d = perCurrencyMean(change1d, pairs);
+  const avg7d = perCurrencyMean(change7d, pairs);
+
+  // Z-score ACROSS THE 8 CURRENCIES — no isolated Euro anchor.
+  const z1 = zscoreAcross(avg1d);
+  const z7 = zscoreAcross(avg7d);
 
   for (const ccy of CURRENCIES) {
-    const z1: number[] = [];
-    const z7: number[] = [];
-    const d1: number[] = [];
-    const d7: number[] = [];
+    const signed1: number[] = [];
+    const signed7: number[] = [];
     pairs.forEach((p, idx) => {
       if (p.base !== ccy && p.quote !== ccy) return;
       const sign = p.base === ccy ? 1 : -1;
-      z1.push(z1d[idx] * sign);
-      z7.push(z7d[idx] * sign);
-      if (Number.isFinite(change1d[idx])) d1.push(change1d[idx] * sign);
-      if (Number.isFinite(change7d[idx])) d7.push(change7d[idx] * sign);
+      if (Number.isFinite(change1d[idx])) signed1.push(change1d[idx] * sign);
+      if (Number.isFinite(change7d[idx])) signed7.push(change7d[idx] * sign);
     });
-    if (!z1.length) continue;
-    const blended = 0.45 * mean(z1) + 0.55 * mean(z7);
+    const blended = 0.45 * (z1[ccy] ?? 0) + 0.55 * (z7[ccy] ?? 0);
     const score = clamp(blended / 2.4, -1, 1) * 42;
     currencies.push({
       code: ccy,
       score: Math.round(score * 10) / 10,
-      delta1d: Math.round(mean(d1) * 100) / 100,
-      delta7d: Math.round(mean(d7) * 100) / 100
+      delta1d: signed1.length ? Math.round(mean(signed1) * 100) / 100 : 0,
+      delta7d: signed7.length ? Math.round(mean(signed7) * 100) / 100 : 0
     });
   }
 

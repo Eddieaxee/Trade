@@ -87,7 +87,7 @@ export async function analyzePair(
     pair,
     interval,
     candles,
-    price: last.c,
+        price: last.c,
     change1h: pctChange(atHourAgo.c, last.c),
     change24h: pctChange(atDayAgo.c, last.c),
     atr,
@@ -100,7 +100,7 @@ export async function analyzePair(
     confluence,
     indicators,
     tradePlan,
-    error: null
+    error: null,
   };
 }
 
@@ -122,7 +122,7 @@ function buildTradePlan(
 ): TradePlan | null {
   if (!price || !atr) return null;
   const score = confluence.score;
-  if (Math.abs(score) < 15) return null; // no edge — refuse to invent one
+      if (Math.abs(score) < 50) return null; // confluence gate: no edge below 50%
   const dir: 'long' | 'short' = score > 0 ? 'long' : 'short';
 
   // Risk distance: 1.5×ATR baseline, hard-bounded to [1×ATR, 2×ATR], then
@@ -146,7 +146,7 @@ function buildTradePlan(
   const snap = (v: number) => Math.round(v * 1e5) / 1e5;
   const stop = snap(price - sign * risk);
   // Minimum 1:2 RR — first target pays 2R, then 3R and 4R.
-  const tps = [2, 3, 4].map((m) => snap(price + sign * risk * m));
+    const tps = [1.5, 2.5, 4].map((m) => snap(price + sign * risk * m));
   const rr = (tp: number) => Math.round((Math.abs(tp - price) / risk) * 100) / 100;
 
   // Retest entry zone: nearest confluence S/R if within 0.75×ATR, else ±0.25×ATR.
@@ -160,7 +160,7 @@ function buildTradePlan(
   const basis =
     `Confluence ${score > 0 ? '+' : ''}${score} (${confluence.label}) on ${interval} → ${dir}. ` +
     `Risk ${ (risk / atr).toFixed(1) }×ATR (${risk.toFixed(5)}), stop beyond the nearest recent opposing swing, ` +
-    `targets at 2R / 3R / 4R (min 1:2 RR)` +
+        `targets at 1.5R / 2.5R / 4R (min 1:2 RR)` +
     (sr ? `, entry zone centered on the ${dir === 'long' ? 'support' : 'resistance'} ${sr.toFixed(5)}` : '') +
     '. Informational sketch — not financial advice.';
 

@@ -1,50 +1,29 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
+import Icon from "@/components/Icon";
 
+interface NewsAction { pair: string; bias: "long" | "short"; confidence: number; }
 interface NewsItem {
+  id: string;
   title: string;
   source: string;
-  time: number;
   url: string;
+  publishedAt: number;
+  summary: string;
+  currencies: Array<{ ccy: string; delta: number }>;
+  actions: NewsAction[];
+  horizon: string;
   impact: "high" | "medium" | "low";
-  currencies: string[];
+  tags: string[];
+}
+interface TechAlert { pair: string; tf: string; kind: string; direction: "up" | "down" | "neutral"; detail: string; urgency: number; }
+interface EconEvent {
+  symbol: string; event: string; when: number; impact: "high" | "medium" | "low";
+  actual: string | null; previous: string | null; forecast: string | null; direction: "past" | "future";
 }
 
-const IMPACT_KEYWORDS: Array<{ words: string[]; impact: "high" | "medium" | "low" }> = [
-  { words: ["rate hike", "rate cut", "interest rate", "emergency", "intervention", "crisis", "crash", "default"], impact: "high" },
-  { words: ["inflation", "cpi", "ppi", "gdp", "nfp", "payroll", "unemployment", "retail sales", "pmi"], impact: "high" },
-  { words: ["fed", "ecb", "boe", "boj", "rba", "boc", "rbnz", "central bank", "powell", "lagarde"], impact: "medium" },
-  { words: ["geopolitical", "war", "sanctions", "tariff", "brexit", "election"], impact: "medium" },
-  { words: ["technical", "analysis", "forecast", "outlook", "review"], impact: "low" }
-];
-
-function classifyImpact(title: string): "high" | "medium" | "low" {
-  const t = title.toLowerCase();
-  for (const kw of IMPACT_KEYWORDS) {
-    if (kw.words.some((w) => t.includes(w))) return kw.impact;
-  }
-  return "low";
-}
-
-function detectCurrencies(title: string): string[] {
-  const t = title.toLowerCase();
-  const found: string[] = [];
-  const map: Record<string, string[]> = {
-    USD: ["dollar", "usd", "fed", "powell", "us ", "u.s.", "america", "nfp", "payroll"],
-    EUR: ["euro", "eur", "ecb", "lagarde", "european", "eurozone"],
-    GBP: ["pound", "sterling", "gbp", "boe", "bank of england", "uk", "britain"],
-    JPY: ["yen", "jpy", "boj", "bank of japan", "japan"],
-    CHF: ["franc", "chf", "snb", "swiss", "switzerland"],
-    AUD: ["aussie", "aud", "rba", "australia"],
-    CAD: ["loonie", "cad", "boc", "canada", "oil"],
-    NZD: ["kiwi", "nzd", "rbnz", "new zealand"]
-  };
-  for (const [ccy, words] of Object.entries(map)) {
-    if (words.some((w) => t.includes(w))) found.push(ccy);
-  }
-  return found;
-}
+const IMPACT_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 };
 
 function fmtAgo(seconds: number): string {
   if (seconds < 60) return `${Math.round(seconds)}s ago`;
@@ -52,61 +31,91 @@ function fmtAgo(seconds: number): string {
   if (seconds < 86400) return `${Math.round(seconds / 3600)}h ago`;
   return `${Math.round(seconds / 86400)}d ago`;
 }
-
-function generateProbableAction(item: NewsItem): string {
-  const t = item.title.toLowerCase();
-  const isPositive = ["rate hike", "hawkish", "surge", "rally", "strong", "beat", "growth", "recovery"].some((w) => t.includes(w));
-  const isNegative = ["rate cut", "dovish", "crash", "slump", "weak", "miss", "recession", "crisis"].some((w) => t.includes(w));
-  const ccys = item.currencies;
-  if (ccys.length >= 2) {
-    if (isPositive) return `${ccys[0]}/${ccys[1]} likely to strengthen in next 1-4h`;
-    if (isNegative) return `${ccys[0]}/${ccys[1]} likely to weaken in next 1-4h`;
-  }
-  if (ccys.length === 1) {
-    if (isPositive) return `${ccys[0]} pairs may see bullish pressure`;
-    if (isNegative) return `${ccys[0]} pairs may see bearish pressure`;
-  }
-  return "Monitor price action for confirmation";
+function fmtWhen(ts: number): string {
+  return new Date(ts * 1000).toUTCString().replace("GMT", "UTC").replace(/, \d{4}$/, "");
 }
+const IMPACT_LABEL: Record<string, { label: string; tone: string }> = {
+  high: { label: "HIGH", tone: "red" },
+  medium: { label: "MEDIUM", tone: "warn" },
+  low: { label: "LOW", tone: "green" },
+};
 
 function NewsCard({ item }: { item: NewsItem }) {
-  const action = generateProbableAction(item);
+  const { label } = IMPACT_LABEL[item.impact] ?? IMPACT_LABEL.low;
   return (
     <div className="news-card">
       <div className="news-head">
-        <span className={`impact-badge ${item.impact}`}>{item.impact.toUpperCase()}</span>
+        <span className="impact-badge">{label}</span>
         <span className="news-source">{item.source}</span>
-        <span className="news-time">{fmtAgo((Date.now() - item.time * 1000) / 1000)}</span>
+        <span className="news-time">{fmtAgo((Date.now() - item.publishedAt * 1000) / 1000)}</span>
       </div>
       <a href={item.url} target="_blank" rel="noopener noreferrer" className="news-title">{item.title}</a>
+      {item.currencies.length > 0 && (
+        <div className="news-meta" style={{ marginBottom: 6 }}>
+          {item.currencies.map((c) => (
+            <span key={c.ccy} className={`chip ${c.delta > 0 ? 'green' : c.delta < 0 ? 'red' : 'gray'}`}>{c.ccy} {c.delta > 0 ? '+' : ''}{c.delta.toFixed(1)}</span>
+          ))}
+        </div>
+      )}
+      {item.summary && <p className="tone-muted" style={{ fontSize: 12.5, margin: '4px 0' }}>{item.summary}</p>}
+      {item.actions.length > 0 && (
+        <div className="news-meta">
+          {item.actions.map((a) => <span key={a.pair} className={`chip ${a.bias === 'long' ? 'green' : 'red'}`}>{a.pair} → {a.bias.toUpperCase()} ({a.confidence}%)</span>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AlertCard({ a }: { a: TechAlert }) {
+  return (
+    <div className="news-card">
+      <div className="news-head">
+        <span className="alert-badge">{a.kind}</span>
+        <span className="news-source">{a.pair} · {a.tf}</span>
+        <span className="news-time">{Math.round(a.urgency)}/100 urgency</span>
+      </div>
+      <div className="news-title" style={{ cursor: 'default' }}>{a.detail}</div>
       <div className="news-meta">
-        {item.currencies.map((c) => <span key={c} className="chip blue">{c}</span>)}
-        <span className="news-action">→ {action}</span>
+        <span className={`chip ${a.direction === 'up' ? 'green' : a.direction === 'down' ? 'red' : 'gray'}`}>{a.direction === 'up' ? '↑ UP' : a.direction === 'down' ? '↓ DOWN' : '·'}</span>
+        <span className="tone-muted">confidence {Math.round(a.urgency)}%</span>
       </div>
     </div>
   );
 }
 
+function CalendarRow({ e }: { e: EconEvent }) {
+  const recent = (Date.now() / 1000) - e.when < 60 * 60 * 2;
+  return (
+    <tr className="calendar-row">
+      <td><span className="alert-badge">{e.direction === 'past' ? 'released' : 'upcoming'}</span><span style={{ marginLeft: 6 }}>{e.symbol}</span></td>
+      <td>{e.event}</td>
+      <td>{fmtWhen(e.when)}</td>
+      <td><span className={`chip ${e.impact === 'high' ? 'red' : e.impact === 'medium' ? 'warn' : 'green'}`}>{e.impact}</span></td>
+      <td>{e.forecast ?? "—"}</td>
+      <td>{e.previous ?? "—"}</td>
+      <td className={recent ? "tone-up" : "tone-muted"}>{recent ? "Live now" : ""}</td>
+    </tr>
+  );
+}
+
 export default function NewsRoom() {
   const [items, setItems] = useState<NewsItem[]>([]);
+  const [alerts, setAlerts] = useState<TechAlert[]>([]);
+  const [calendar, setCalendar] = useState<EconEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState(0);
+  const [tab, setTab] = useState<"feed" | "calendar" | "alerts">("feed");
 
-  const fetchNews = async () => {
+  const fetchRoom = async () => {
     try {
       const res = await fetch(`/api/news?n=${Date.now()}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      const raw = (data.items || []) as NewsItem[];
-      const seen = new Set<string>();
-      const deduped = raw.filter((it) => {
-        const key = it.title.toLowerCase().slice(0, 40);
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-      setItems(deduped);
+      setItems(data.items || []);
+      setAlerts(data.alerts || []);
+      setCalendar(data.calendar || []);
       setLastUpdate(Date.now());
       setError(null);
     } catch (e) {
@@ -116,50 +125,93 @@ export default function NewsRoom() {
     }
   };
 
-  useEffect(() => {
-    fetchNews();
-    const id = setInterval(fetchNews, 60000);
-    return () => clearInterval(id);
-  }, []);
+  useEffect(() => { void fetchRoom(); const id = setInterval(() => void fetchRoom(), 60_000); return () => clearInterval(id); }, []);
 
-  const high = items.filter((i) => i.impact === "high");
-  const medium = items.filter((i) => i.impact === "medium");
-  const low = items.filter((i) => i.impact === "low");
+  const feed = [...items].sort((a, b) => (IMPACT_ORDER[a.impact] - IMPACT_ORDER[b.impact]) || b.publishedAt - a.publishedAt);
+  // TAB 1 — strictly the latest 10 headlines, classified High → Medium → Low.
+  const high = feed.slice(0, 10);
+  // TAB 2 — top 5 upcoming high-impact events, then last Friday's historical releases.
+  const upcomingHigh = calendar
+    .filter((c) => c.direction === "future" && c.impact === "high")
+    .sort((a, b) => a.when - b.when)
+    .slice(0, 5);
+  const upcoming = upcomingHigh.length ? upcomingHigh : calendar.filter((c) => c.direction === "future").slice(0, 5);
+  const fridayReleases = calendar
+    .filter((c) => c.direction === "past" && new Date(c.when * 1000).getUTCDay() === 5)
+    .sort((a, b) => b.when - a.when)
+    .slice(0, 4);
+  const recentReleases = fridayReleases.length ? fridayReleases : calendar.filter((c) => c.direction === "past").slice(0, 4);
+
+  const flips = [...alerts]
+    .filter((a) => ["MACD cross", "Momentum spike", "RSI extreme", "Technical alignment"].includes(a.kind))
+    .sort((a, b) => b.urgency - a.urgency)
+    .slice(0, 5);
 
   return (
     <div>
+      <div className="news-tabs">
+        <button className={`news-tab ${tab === "feed" ? "active" : ""}`} onClick={() => setTab("feed")}><Icon name="news" size={14} /> Live Macro Feed</button>
+        <button className={`news-tab ${tab === "calendar" ? "active" : ""}`} onClick={() => setTab("calendar")}><Icon name="calendar" size={14} /> Economic Calendar</button>
+        <button className={`news-tab ${tab === "alerts" ? "active" : ""}`} onClick={() => setTab("alerts")}><Icon name="zap" size={14} /> App-Generated Flips</button>
+      </div>
+
       <div className="status-bar" style={{ marginBottom: 14 }}>
         {loading && <><span className="spinner" /> <span>Aggregating forex news…</span></>}
         {error && <span className="err">⚠ {error}</span>}
         {!loading && !error && (
-          <span className="pill">📡 {items.length} headlines · updated {fmtAgo((Date.now() - lastUpdate) / 1000)} ago · auto-refreshes every 60s</span>
+          <span className="pill">📡 {items.length} headlines · {alerts.length} tech alerts · updated {fmtAgo((Date.now() - lastUpdate) / 1000)} ago · auto-refreshes every 60s</span>
         )}
       </div>
 
-      {high.length > 0 && (
-        <div className="panel" style={{ marginBottom: 14, borderColor: "rgba(240, 80, 106, 0.5)" }}>
-          <h3>🔴 High impact — probable immediate market action</h3>
-          {high.map((item, i) => <NewsCard key={i} item={item} />)}
-        </div>
+      {tab === "feed" && (
+        <>
+          <div className="panel" style={{ marginBottom: 10 }}>
+            <h3>Latest 10 headlines — classified by market impact</h3>
+            <p className="tone-muted" style={{ fontSize: 12, margin: '0 0 4px' }}>High impact first, then Medium, then Low. Multi-source feed — no single-source blind spots.</p>
+          </div>
+          {high.length === 0 && !loading && <div className="panel"><p className="tone-muted">No high-impact headlines available right now.</p></div>}
+          {high.map((it) => <NewsCard key={it.id} item={it} />)}
+        </>
       )}
 
-      {medium.length > 0 && (
-        <div className="panel" style={{ marginBottom: 14 }}>
-          <h3>🟡 Medium impact — next few hours</h3>
-          {medium.map((item, i) => <NewsCard key={i} item={item} />)}
-        </div>
+      {tab === "calendar" && (
+        <>
+          <div className="panel" style={{ marginBottom: 14 }}>
+            <h3>Upcoming high-impact economic events (UTC)</h3>
+            {upcoming.length === 0 ? (
+              <p className="tone-muted">No high-impact events scheduled for the next week.</p>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table className="grid-table">
+                  <thead><tr><th>Currency</th><th>Event</th><th>When</th><th>Impact</th><th>Forecast</th><th>Prev</th><th></th></tr></thead>
+                  <tbody>{upcoming.map((e, i) => <CalendarRow key={`up-${i}`} e={e} />)}</tbody>
+                </table>
+              </div>
+            )}
+          </div>
+          <div className="panel">
+            <h3>Last Friday's historical releases</h3>
+            {recentReleases.length === 0 ? (
+              <p className="tone-muted">No macro releases in the recent window.</p>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table className="grid-table">
+                  <thead><tr><th>Currency</th><th>Event</th><th>When</th><th>Impact</th><th>Forecast</th><th>Prev</th></tr></thead>
+                  <tbody>{recentReleases.map((e, i) => <CalendarRow key={`past-${i}`} e={e} />)}</tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
       )}
 
-      {low.length > 0 && (
-        <div className="panel">
-          <h3>🟢 Low impact — background context</h3>
-          {low.map((item, i) => <NewsCard key={i} item={item} />)}
-        </div>
-      )}
-
-      {!loading && items.length === 0 && (
-        <div className="panel"><p className="tone-muted">No headlines available right now. News feeds may be temporarily unreachable.</p></div>
+      {tab === "alerts" && (
+        <>
+          {flips.length === 0 && !loading && <div className="panel"><p className="tone-muted">No significant market flips detected in the last scan.</p></div>}
+          {flips.map((a, i) => <AlertCard key={`alert-${i}`} a={a} />)}
+        </>
       )}
     </div>
   );
 }
+

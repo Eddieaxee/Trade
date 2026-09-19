@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { Logo } from '@/components/Logo';
@@ -19,8 +18,6 @@ const HeroCanvas3D = dynamic(() => import('@/components/HeroCanvas3D'), {
  * - no login, no auth, no friction
  */
 export default function LandingPage() {
-  const [entered, setEntered] = useState(false);
-
   return (
     <div className="landing">
       {/* 3D hero background */}
@@ -48,7 +45,7 @@ export default function LandingPage() {
         </p>
 
         <div className="hero-actions">
-          <Link href="/dashboard?ref=hero" className="start-btn" onClick={() => setEntered(true)}>
+          <Link href="/dashboard?ref=hero" className="start-btn">
             <span className="start-btn-label">Start Analyzing</span>
             <span className="start-btn-arrow">→</span>
           </Link>
@@ -64,7 +61,7 @@ export default function LandingPage() {
             <span className="stat-label">Pairs</span>
           </div>
           <div className="stat">
-            <span className="stat-num">16</span>
+            <span className="stat-num">18</span>
             <span className="stat-label">Indicators</span>
           </div>
           <div className="stat">
@@ -74,8 +71,8 @@ export default function LandingPage() {
         </div>
       </div>
 
-      {/* Scroll hint */}
-      <div className="scroll-hint">
+      {/* Scroll hint — static, no top-to-bottom moving boxes */}
+      <div className="scroll-hint-static">
         <span>Scroll to explore</span>
         <div className="scroll-dot" />
       </div>

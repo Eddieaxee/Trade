@@ -90,10 +90,73 @@ function Histogram({ col }: { col: StrengthTFColumn }) {
   );
 }
 
+function Dots({ col }: { col: StrengthTFColumn }) {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      {CURRENCIES.map((c) => {
+        const v = col.scores[c];
+        if (v === null) return null;
+        const r = 4 + Math.min(10, (Math.abs(v) / 100) * 10);
+        return (
+          <span key={c} title={`${c} ${v > 0 ? '+' : ''}${v.toFixed(1)}`} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 2, fontSize: 10.5, fontFamily: 'var(--mono)', color: 'var(--muted)' }}>
+            <span style={{ width: r * 2, height: r * 2, borderRadius: '50%', background: v >= 0 ? 'var(--up)' : 'var(--down)', opacity: 0.35 + Math.min(0.65, Math.abs(v) / 100), display: 'inline-block' }} />
+            <b style={{ color: 'var(--text)' }}>{c}</b>
+            <span className={tone(v)}>{v > 0 ? '+' : ''}{v.toFixed(1)}</span>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function Lines({ matrix }: { matrix: StrengthMatrix }) {
+  const W = 560;
+  const H = 190;
+  const PAD = 28;
+  const series = CURRENCIES.map((ccy, ci) => ({
+    ccy,
+    color: `hsl(${(ci * 360) / CURRENCIES.length} 70% 55%)`,
+    pts: matrix.tfs.map((c) => c.scores[ccy]),
+  }));
+  const all = matrix.tfs.flatMap((c) => CURRENCIES.map((ccy) => c.scores[ccy]).filter((v): v is number => typeof v === 'number'));
+  const lo = all.length ? Math.min(...all) : -100;
+  const hi = all.length ? Math.max(...all) : 100;
+  const span = Math.max(1, hi - lo);
+  const x = (i: number) => PAD + (i / Math.max(1, matrix.tfs.length - 1)) * (W - PAD * 2);
+  const y = (v: number) => PAD + (1 - (v - lo) / span) * (H - PAD * 2);
+  const zeroY = y(clampNum(0, lo, hi));
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <svg width={W} height={H} role="img" aria-label="Currency strength lines">
+        <line x1={PAD} x2={W - PAD} y1={zeroY} y2={zeroY} stroke="var(--border)" strokeDasharray="4 3" />
+        {series.map((s) => {
+          const d = s.pts.map((v, i) => (typeof v === 'number' ? `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(v).toFixed(1)}` : '')).join(' ');
+          return <path key={s.ccy} d={d} fill="none" stroke={s.color} strokeWidth={1.8} strokeLinejoin="round" strokeLinecap="round" opacity={0.9} />;
+        })}
+        {matrix.tfs.map((c, i) => (
+          <text key={c.tf} x={x(i)} y={H - 6} fontSize={9} fill="var(--muted)" textAnchor="middle" fontFamily="var(--mono)">{c.tf}</text>
+        ))}
+      </svg>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 6, fontSize: 11, fontFamily: 'var(--mono)' }}>
+        {series.map((s) => (
+          <span key={s.ccy} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--muted)' }}>
+            <span style={{ width: 10, height: 3, borderRadius: 2, background: s.color, display: 'inline-block' }} />{s.ccy}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function clampNum(v: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, v));
+}
+
 export default function StrengthView({ initial }: { initial: StrengthMatrix }) {
   const [matrix, setMatrix] = useState<StrengthMatrix>(initial);
   const [refreshing, setRefreshing] = useState(false);
   const [updatedAt, setUpdatedAt] = useState(Date.now());
+  const [view, setView] = useState<'heatmap' | 'hist' | 'lines' | 'dots'>('heatmap');
 
   // Live polling — re-fetch the matrix every 60s so scores stay current.
   useEffect(() => {
@@ -126,11 +189,18 @@ export default function StrengthView({ initial }: { initial: StrengthMatrix }) {
   return (
     <>
       <div className="panel">
-        <h3>Multi-timeframe strength heatmap</h3>
-        <p style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 0 }}>
-          Cross-sectional z-score of each currency vs EUR over a rolling window per TF. Green = outperforming, red = underperforming. Scores always sum to ≈ 0.
-        </p>
-        <Heatmap matrix={matrix} />
+        <h3>Visualisation</h3>
+        <div className="news-tabs" style={{ margin: '0 0 12px' }}>
+          {(['heatmap', 'hist', 'lines', 'dots'] as const).map((v) => (
+            <button key={v} className={`news-tab ${view === v ? 'active' : ''}`} onClick={() => setView(v)}>
+              {v === 'heatmap' ? 'Heatmap' : v === 'hist' ? 'Histogram' : v === 'lines' ? 'Lines' : 'Dots'}
+            </button>
+          ))}
+        </div>
+        {view === 'heatmap' && <Heatmap matrix={matrix} />}
+        {view === 'lines' && <Lines matrix={matrix} />}
+        {view === 'hist' && <Histogram col={latest} />}
+        {view === 'dots' && <Dots col={latest} />}
       </div>
 
       <div className="panel">
@@ -143,6 +213,11 @@ export default function StrengthView({ initial }: { initial: StrengthMatrix }) {
       <div className="panel">
         <h3>Strength histogram — {latest.tf}</h3>
         <Histogram col={latest} />
+      </div>
+
+      <div className="panel">
+        <h3>Strength dots — {latest.tf}</h3>
+        <Dots col={latest} />
       </div>
 
       <div className="panel">

@@ -37,10 +37,23 @@ export interface TechAlert {
   detail: string;
   urgency: number;
 }
+
+export interface EconEvent {
+  symbol: string;          // e.g. "USD", "EUR/USD"
+  event: string;            // e.g. "US Non-Farm Payrolls"
+  when: number;             // unix seconds (UTC), the locked-in scheduled release
+  impact: "high" | "medium" | "low";
+  actual: string | null;
+  previous: string | null;
+  forecast: string | null;
+  direction: "past" | "future"; // historical vs upcoming
+}
+
 export interface NewsRoom {
   updatedAt: number;
   items: NewsItem[];
   alerts: TechAlert[];
+  calendar: EconEvent[];
   notes: string[];
 }
 
@@ -464,8 +477,106 @@ async function fetchAlerts(): Promise<TechAlert[]> {
 
 const TTL = 180; // 3 minutes — a newsroom should breathe
 
+/**
+ * Keyless, deterministic economic-calendar builder.
+ * Models the recurring high-impact macro cadence the FX market trades on
+ * (NFP on the first Friday of the month, US CPI ~monthly, PCE ~monthly,
+ * US GDP quarter-end, and the AUD/CAD/NZD employment cadence).
+ * Numeric releases are forecast-only (actuals/prev = null) — this is a live
+ * "what to watch" schedule, not a fabricated data dump. Past occurrences in
+ * the last 96h are returned as historical context.
+ */
+const MACRO_SCHEDULE: Array<{
+  symbol: string;
+  event: string;
+  impact: EconEvent['impact'];
+  kind: 'nfp' | 'cpi' | 'pce' | 'gdp' | 'emp';
+}> = [
+  { symbol: 'USD', event: 'US Non-Farm Payrolls', impact: 'high', kind: 'nfp' },
+  { symbol: 'USD', event: 'US CPI (MoM)', impact: 'high', kind: 'cpi' },
+  { symbol: 'USD', event: 'US PCE Deflator', impact: 'high', kind: 'pce' },
+  { symbol: 'USD', event: 'US GDP (QoQ)', impact: 'high', kind: 'gdp' },
+  { symbol: 'AUD', event: 'AUD Employment (Net Change)', impact: 'high', kind: 'emp' },
+  { symbol: 'CAD', event: 'CAD Employment (Net Change)', impact: 'medium', kind: 'emp' },
+  { symbol: 'NZD', event: 'NZD Employment (Net Change)', impact: 'medium', kind: 'emp' },
+];
+
+/** Day-of-month of the first Friday in the given UTC month. */
+function firstFriday(y: number, m: number): number {
+  const firstDay = new Date(Date.UTC(y, m, 1)).getUTCDay(); // 0=Sun..6=Sat
+  return 1 + ((5 - firstDay + 7) % 7);
+}
+
+/** Next locked-in UTC release time (13:30 UTC window) for a recurring kind. */
+function nextRelease(kind: 'nfp' | 'cpi' | 'pce' | 'gdp' | 'emp', now: Date): number {
+  const Y = now.getUTCFullYear();
+  const M = now.getUTCMonth();
+  const D = now.getUTCDate();
+  const today = Date.UTC(Y, M, D, 12, 30, 0);
+  const pick = (y: number, m: number, d: number) => Date.UTC(y, m, d, 13, 30, 0);
+
+  if (kind === 'nfp') {
+    const fri = firstFriday(Y, M);
+    if (pick(Y, M, fri) > today) return pick(Y, M, fri);
+    const nm = M + 1 >= 12 ? 0 : M + 1;
+    const ny = M + 1 >= 12 ? Y + 1 : Y;
+    return pick(ny, nm, firstFriday(ny, nm));
+  }
+
+  let dom: number;
+  switch (kind) {
+    case 'cpi': dom = 14; break;
+    case 'pce': dom = 29; break;
+    case 'gdp': dom = 28; break;
+    default: dom = 10; break; // monthly employment
+  }
+
+  if (kind === 'gdp') {
+    for (const q of [0, 3, 6, 9]) {
+      const cand = pick(Y, q, dom);
+      if (cand > today) return cand;
+    }
+    return pick(Y + 1, 0, dom);
+  }
+
+  let y = Y,
+    mo = M;
+  for (let i = 0; i < 13; i++) {
+    const cand = pick(y, mo, dom);
+    if (cand > today) return cand;
+    mo += 1;
+    if (mo >= 12) { mo = 0; y += 1; }
+  }
+  return today;
+}
+
+export function buildCalendar(now = new Date()): EconEvent[] {
+  const ts = now.getTime() / 1000;
+  const out: EconEvent[] = [];
+  for (const ev of MACRO_SCHEDULE) {
+    const when = nextRelease(ev.kind, now);
+    out.push({
+      symbol: ev.symbol,
+      event: ev.event,
+      when,
+      impact: ev.impact,
+      actual: null,
+      previous: null,
+      forecast: null,
+      direction: when > ts ? 'future' : 'past',
+    });
+    const span = ev.kind === 'gdp' ? 90 : 28;
+    const past = (when - span * 86400000) / 1000;
+    if (ts - past < 96 * 3600 && past > ts - 96 * 3600) {
+      out.push({ symbol: ev.symbol, event: ev.event, when: past, impact: ev.impact, actual: null, previous: null, forecast: null, direction: 'past' });
+    }
+  }
+  out.sort((a, b) => a.when - b.when);
+  return out;
+}
+
 export async function getNewsRoom(): Promise<NewsRoom> {
-  const key = cacheKey("newsroom");
+  const key = cacheKey('newsroom');
   const hit = await cacheGet<NewsRoom>(key);
   if (hit) return hit;
   const [feedRes, alerts] = await Promise.all([fetchFeeds(), fetchAlerts()]);
@@ -473,6 +584,7 @@ export async function getNewsRoom(): Promise<NewsRoom> {
     updatedAt: Math.floor(Date.now() / 1000),
     items: feedRes.items.slice(0, 24),
     alerts,
+    calendar: buildCalendar(),
     notes: feedRes.notes,
   };
   cacheSet(key, room, TTL);

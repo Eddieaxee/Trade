@@ -8,7 +8,8 @@ interface NewsItem {
   time: number;
   url: string;
   impact: "high" | "medium" | "low";
-  currencies: string[];
+  currencies: Array<{ ccy: string; delta: number }>;
+  summary: string;
 }
 
 function fmtAgo(seconds: number): string {
@@ -20,7 +21,7 @@ function fmtAgo(seconds: number): string {
 
 function generateOutlook(items: NewsItem[]): { summary: string; risks: string[]; topPairs: string[] } {
   const high = items.filter((i) => i.impact === "high");
-  const allCcys = items.flatMap((i) => i.currencies);
+    const allCcys = items.flatMap((i) => i.currencies.map((c) => c.ccy));
   const ccyCount: Record<string, number> = {};
   for (const c of allCcys) ccyCount[c] = (ccyCount[c] || 0) + 1;
   const topCcys = Object.entries(ccyCount).sort((a, b) => b[1] - a[1]).map(([c]) => c);

@@ -9,6 +9,7 @@ import PairTable from '@/components/PairTable';
 import SMCCard from '@/components/SMCCard';
 import CRTCard from '@/components/CRTCard';
 import IndicatorsCard from '@/components/IndicatorsCard';
+import Icon from '@/components/Icon';
 import { getSessions } from '@/components/MarketSessions';
 import ScoreBar from '@/components/ScoreBar';
 
@@ -71,7 +72,7 @@ export default function Dashboard() {
               <span className="pill">{fmtAgo(snapshot.generatedAt)} ago · {snapshot.pairs.length} pairs</span>
             )}
             {snapshot && <span className="pill">{fmtClock(snapshot.generatedAt)}</span>}
-            <button onClick={() => void load(interval, true)} className="refresh-btn">Refresh</button>
+            <button onClick={() => void load(interval, true)} className="refresh-btn"><Icon name="refresh" size={13} style={{ marginRight: 4 }} />Refresh</button>
           </div>
         </div>
       </div>
@@ -88,7 +89,7 @@ export default function Dashboard() {
       {snapshot && (
         <>
           <div className="panel" style={{ marginBottom: 10 }}>
-            <h3>Market sessions — live</h3>
+            <h3><Icon name="clock" size={13} style={{ marginRight: 4 }} />Market sessions — live</h3>
             <div className="session-panel">
               {sessions.map((s) => (
                 <div key={s.city} className={`session-card ${s.status}`}>
@@ -104,7 +105,7 @@ export default function Dashboard() {
           </div>
 
           <div className="panel" style={{ marginBottom: 12 }}>
-            <h3>Currency strength — relative 1d/7d decomposition (EUR-based rates)</h3>
+            <h3><Icon name="strength" size={13} style={{ marginRight: 4 }} />Currency strength — relative 1d/7d decomposition (EUR-based rates)</h3>
             <StrengthBoard strength={snapshot.strength} />
           </div>
 

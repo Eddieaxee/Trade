@@ -141,6 +141,15 @@ export default function PairDashboard({ a, mtf }: { a: PairAnalysis; mtf: PairMT
           </div>
           <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 8 }}>{a.tradePlan.basis}</div>
         </div>
+            )}
+
+      {!a.tradePlan && Math.abs(a.confluence.score) < 50 && (
+        <div className="panel">
+          <h3>Suggested trade plan</h3>
+          <p className="tone-muted" style={{ fontSize: 13.5 }}>
+            Confluence below 50% threshold — No high-probability setup available.
+          </p>
+        </div>
       )}
 
       <div className="panel">

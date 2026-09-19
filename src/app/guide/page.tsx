@@ -44,7 +44,7 @@ export default function GuidePage() {
 
         <div className="panel guide-section">
           <h3>5. Technical Indicators</h3>
-          <p>16 standard indicators per pair and timeframe: SMA (10/20/50), EMA (10/20/50), RSI, MACD, Stochastic, Stoch RSI, CCI, ADX, ATR, Bollinger Bands, Momentum, Williams %R, Ichimoku, Awesome Oscillator, OBV, VWAP.</p>
+          <p>18 standard indicators per pair and timeframe: SMA (20/50), EMA (20/50), RSI (Wilder, clamped 0–100), MACD 12/26/9 with histogram = line − signal, Stochastic 14/3 (clamped 0–100), Stoch RSI, CCI, ADX with +DI/−DI, ATR, Bollinger %B, Momentum 10, Williams %R (clamped −100–0), Ichimoku 9/26/52, Awesome Oscillator, plus OBV and VWAP whenever a real volume feed is present.</p>
           <p style={{ marginTop: 6 }}><strong>Speedometer:</strong> Shows overall buy/sell conviction from -100 (strong sell) to +100 (strong buy).</p>
           <p><strong>Histogram:</strong> Green bars = buy signals, Red = sell, Gray = neutral. Bar width shows strength.</p>
         </div>

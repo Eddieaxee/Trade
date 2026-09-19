@@ -1,7 +1,8 @@
-// ── Technical indicators: 16 standard studies computed from OHLC candles ─────
+// ── Technical indicators: 18 standard studies computed from OHLC candles ─────
 // Oscillators (RSI/Stoch/StochRSI/CCI/Williams %R) use mean-reversion extremes;
-// trend studies (MAs, MACD, ADX, Ichimoku, AO) follow direction. Conviction
-// (strength 0..1) reflects distance from the neutral zone, never invented data.
+// trend studies (MAs, MACD, ADX, Ichimoku, AO) follow direction. Volume studies
+// (OBV, VWAP) are included only when real candle volume exists.
+// Conviction (strength 0..1) reflects distance from the neutral zone, never invented data.
 
 import type { Candle, IndicatorBundle, IndicatorReading, IndicatorSignal } from '@/lib/types';
 import { clamp, mean, stdev } from '@/lib/utils';
@@ -221,6 +222,47 @@ function awesome(cs: Candle[]): number | null {
   return mean(med(cs.slice(-5))) - mean(med(cs.slice(-34)));
 }
 
+/** True if any candle in the window carries a finite positive volume. */
+function hasVolume(cs: Candle[]): boolean {
+  return cs.some((c) => typeof c.v === 'number' && Number.isFinite(c.v) && (c.v as number) > 0);
+}
+
+/** On-Balance Volume — cumulative signed volume. Returns null when no volume feed. */
+function obv(cs: Candle[]): { value: number | null; slope: number | null } {
+  if (!hasVolume(cs)) return { value: null, slope: null };
+  let acc = 0;
+  const series: number[] = [];
+  for (let i = 0; i < cs.length; i++) {
+    const v = cs[i].v ?? 0;
+    if (i > 0) {
+      if (cs[i].c > cs[i - 1].c) acc += v;
+      else if (cs[i].c < cs[i - 1].c) acc -= v;
+    }
+    series.push(acc);
+  }
+  const n = Math.min(10, series.length - 1);
+  const slope = n > 0 ? series[series.length - 1] - series[series.length - 1 - n] : 0;
+  return { value: acc, slope };
+}
+
+/** Session-anchored VWAP — cumulative typical-price × volume. Null without volume. */
+function vwap(cs: Candle[], lookback = 48): { value: number | null; devPct: number | null } {
+  const win = cs.slice(-lookback);
+  if (!hasVolume(win)) return { value: null, devPct: null };
+  let pv = 0;
+  let vv = 0;
+  for (const c of win) {
+    const v = c.v ?? 0;
+    const tp = (c.h + c.l + c.c) / 3;
+    pv += tp * v;
+    vv += v;
+  }
+  if (vv <= 0) return { value: null, devPct: null };
+  const value = pv / vv;
+  const last = cs[cs.length - 1].c;
+  return { value, devPct: ((last - value) / value) * 100 };
+}
+
 function fmt5(v: number): string {
   const a = Math.abs(v);
   return v.toFixed(a < 10 ? 5 : a < 100 ? 4 : a >= 1000 ? 2 : 3);
@@ -232,7 +274,7 @@ const mkReading = (
   key: string, name: string, value: string, signal: IndicatorSignal, strength: number, note: string
 ): IndicatorReading => ({ key, name, value, signal, strength: clamp(strength, 0, 1), note });
 
-/** Build the full 16-indicator bundle for a candle series. */
+/** Build the full 18-indicator bundle for a candle series. */
 export function buildIndicators(candles: Candle[]): IndicatorBundle {
   const xs = C(candles);
   const readings: IndicatorReading[] = [];
@@ -376,6 +418,47 @@ export function buildIndicators(candles: Candle[]): IndicatorBundle {
     const sig: IndicatorSignal = ao > 0 ? 'buy' : 'sell';
     const av = Math.abs(ao) < 1 ? ao.toExponential(1) : ao.toFixed(5);
     readings.push(mkReading('ao', 'Awesome Osc 5/34', `${ao > 0 ? '+' : ''}${av}`, sig, clamp(Math.abs(ao) / ((at || 1) * 1.2), 0, 1), ao > 0 ? 'median price momentum above zero — bullish' : 'median price momentum below zero — bearish'));
+  }
+
+  // ── RSI bounds clamp [0,100] (Wilder formula already bounded; enforce hard) ───
+  const rsiRow = readings.find((r) => r.key === 'rsi');
+  if (rsiRow) {
+    const num = parseFloat(rsiRow.value);
+    if (Number.isFinite(num)) rsiRow.value = clamp(num, 0, 100).toFixed(1);
+  }
+
+  // ── Stochastic bounds clamp [0,100] ──────────────────────────────────────────
+  const stochRow = readings.find((r) => r.key === 'stoch');
+  if (stochRow) {
+    const [kRaw, dRaw] = stochRow.value.split('/');
+    const k = clamp(parseFloat(kRaw), 0, 100);
+    const d = dRaw === '—' ? '—' : clamp(parseFloat(dRaw), 0, 100).toFixed(0);
+    stochRow.value = `${k.toFixed(0)}/${d}`;
+  }
+
+  // ── Williams %R bounds clamp [-100,0] ────────────────────────────────────────
+  const wrRow = readings.find((r) => r.key === 'willr');
+  if (wrRow) {
+    const num = parseFloat(wrRow.value);
+    if (Number.isFinite(num)) wrRow.value = clamp(num, -100, 0).toFixed(0);
+  }
+
+  // ── OBV (volume-gated: included only when a real volume feed exists) ──────────
+  const ob = obv(candles);
+  if (ob.value !== null && ob.slope !== null) {
+    const sig: IndicatorSignal = ob.slope > 0 ? 'buy' : ob.slope < 0 ? 'sell' : 'neutral';
+    const mag = Math.abs(ob.slope);
+    const scale = candles.reduce((a, c) => a + (c.v ?? 0), 0) / Math.max(1, candles.length);
+    const val = ob.value >= 1e6 ? `${(ob.value / 1e6).toFixed(2)}M` : ob.value >= 1e3 ? `${(ob.value / 1e3).toFixed(1)}K` : ob.value.toFixed(0);
+    readings.push(mkReading('obv', 'OBV', `${ob.slope > 0 ? '+' : ''}${val}`, sig, clamp(mag / (scale * 3 || 1e-9), 0, 1), ob.slope > 0 ? 'accumulation — volume flowing in on up closes' : ob.slope < 0 ? 'distribution — volume flowing out on down closes' : 'OBV flat — no volume edge'));
+  }
+
+  // ── VWAP (volume-gated: included only when a real volume feed exists) ─────────
+  const vw = vwap(candles);
+  if (vw.value !== null && vw.devPct !== null) {
+    const dev = vw.devPct;
+    const sig: IndicatorSignal = dev > 0.02 ? 'buy' : dev < -0.02 ? 'sell' : 'neutral';
+    readings.push(mkReading('vwap', 'VWAP 48', fmt5(vw.value), sig, clamp(Math.abs(dev) / 0.25, 0, 1), dev > 0 ? `price ${dev.toFixed(3)}% above VWAP — buyers paying up` : dev < 0 ? `price ${Math.abs(dev).toFixed(3)}% below VWAP — sellers in control` : 'price pinned to VWAP — fair value'));
   }
 
   // ── Aggregate: strength-weighted directional score ─────────────────────────
