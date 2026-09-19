@@ -11,6 +11,7 @@ const LINKS: Array<{ href: string; label: string; icon: IconName }> = [
   { href: '/smc', label: 'SMC', icon: 'smc' },
   { href: '/indicators', label: 'Indicators', icon: 'indicators' },
   { href: '/crt', label: 'CRT', icon: 'crt' },
+  { href: '/intel', label: 'Intel', icon: 'zap' },
   { href: '/news', label: 'News Room', icon: 'news' },
   { href: '/guide', label: 'Guide', icon: 'guide' }
 ];

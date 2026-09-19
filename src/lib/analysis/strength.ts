@@ -14,7 +14,7 @@
 
 import type { CurrencyStrength, RatePoint, StrengthResult } from '@/lib/types';
 import { CURRENCIES, canonicalPair } from '@/lib/constants';
-import { clamp, mean, pctChange } from '@/lib/utils';
+import { clamp, mean, pctChange, stdev } from '@/lib/utils';
 
 export interface CrossPair {
   base: string;
@@ -115,13 +115,52 @@ export function computeStrength(series: RatePoint[]): StrengthResult {
   // Raw % change per pair, then the explicit all-against-all pairwise average.
   const change1d = windowChange(series, pairs, 86400);
   const change7d = windowChange(series, pairs, 7 * 86400);
+  const change30d = windowChange(series, pairs, 30 * 86400);
+  const change3d = windowChange(series, pairs, 3 * 86400);
 
   const raw1d = perCurrencyMean(change1d, pairs);
   const raw7d = perCurrencyMean(change7d, pairs);
+  const raw30d = perCurrencyMean(change30d, pairs);
+  const raw3d = perCurrencyMean(change3d, pairs);
 
   // All-against-all comparison across every other currency — raw %, no z-score.
   const pw1 = pairwiseScores(raw1d);
   const pw7 = pairwiseScores(raw7d);
+  const pw30 = pairwiseScores(raw30d);
+  const pw3 = pairwiseScores(raw3d);
+
+  // Volatility: std-dev of the last 10 daily all-against-all scores per currency.
+  const vol10: Record<string, number | null> = {};
+  {
+    const dailyScores: Record<string, number[]> = {};
+    for (const c of CURRENCIES) dailyScores[c] = [];
+    const days = Math.min(11, series.length - 1);
+    for (let d = 1; d <= days; d++) {
+      const win = windowChange(series.slice(0, series.length - d + 1), pairs, 86400);
+      const pm = perCurrencyMean(win, pairs);
+      const pw = pairwiseScores(pm);
+      for (const c of CURRENCIES) dailyScores[c].push(pw[c]);
+    }
+    for (const c of CURRENCIES) {
+      const vals = dailyScores[c];
+      vol10[c] = vals.length >= 4 ? stdev(vals) : null;
+    }
+  }
+
+  // Breadth: of the 7 direct crosses, how many moved in this currency's favour over 7d.
+  const breadth: Record<string, number | null> = {};
+  for (const ccy of CURRENCIES) {
+    let wins = 0;
+    let n = 0;
+    pairs.forEach((p, idx) => {
+      if (p.base !== ccy && p.quote !== ccy) return;
+      const ch = change7d[idx];
+      if (!Number.isFinite(ch)) return;
+      n++;
+      if ((p.base === ccy && ch > 0) || (p.quote === ccy && ch < 0)) wins++;
+    });
+    breadth[ccy] = n ? wins : null;
+  }
 
   for (const ccy of CURRENCIES) {
     const signed1: number[] = [];
@@ -138,7 +177,11 @@ export function computeStrength(series: RatePoint[]): StrengthResult {
       code: ccy,
       score: Math.round(score * 10) / 10,
       delta1d: signed1.length ? Math.round(mean(signed1) * 100) / 100 : 0,
-      delta7d: signed7.length ? Math.round(mean(signed7) * 100) / 100 : 0
+      delta7d: signed7.length ? Math.round(mean(signed7) * 100) / 100 : 0,
+      delta30d: Number.isFinite(pw30[ccy]) ? Math.round(pw30[ccy] * 100) / 100 : null,
+      momentum3d: Number.isFinite(pw3[ccy]) ? Math.round(pw3[ccy] * 100) / 100 : null,
+      vol10: vol10[ccy] !== null ? Math.round((vol10[ccy] as number) * 100) / 100 : null,
+      breadth: breadth[ccy]
     });
   }
 

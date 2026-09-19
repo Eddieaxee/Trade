@@ -13,6 +13,8 @@ export interface SessionInfo {
   status: 'open' | 'closed' | 'opening-soon' | 'closing-soon';
   localTime: string; // HH:MM:SS
   utcTime: string;   // HH:MM:SS
+  weekend: boolean;            // true during the FX weekend shutdown
+  reopensInMin: number | null; // minutes until Sunday 21:00 UTC when weekend
 }
 
 function dstShift(offsetBase: number, now: Date): number {
@@ -52,9 +54,16 @@ function sessionStatus(
   const closeMin = closeUtc * 60;
   const wrapsMidnight = closeMin <= openMin;
 
-  // Trading-week guard: weekends (Fri 21:00 UTC → Sun 22:00 UTC) are closed.
+  // ── Trading-week guard (institutional FX hours) ────────────────────────────
+  // Market closes Friday 21:00 UTC (5pm New York) and reopens Sunday 21:00 UTC
+  // (Sydney's local Monday-morning open in DST). The whole of Saturday is
+  // closed, and Sunday is closed until 21:00 UTC — no session is "open" and
+  // none is "opening in 30m" during the weekend.
   const dow = now.getUTCDay();
-  const dayClosed = dow === 0 || (dow === 5 && utcMin >= 21 * 60) || (dow === 6 && utcMin < 22 * 60);
+  const weekendClosed =
+    dow === 6 ||
+    (dow === 5 && utcMin >= 21 * 60) ||
+    (dow === 0 && utcMin < 21 * 60);
 
   const inSession = wrapsMidnight
     ? utcMin >= openMin || utcMin < closeMin
@@ -65,16 +74,24 @@ function sessionStatus(
     ? utcMin >= openMin ? (24 * 60 - utcMin + closeMin) : (closeMin - utcMin)
     : closeMin - utcMin;
 
-  const opensIn = wrapsMidnight
+  // Intra-day minutes until this session's next open (today or tomorrow).
+  const opensInToday = wrapsMidnight
     ? utcMin < openMin ? (openMin - utcMin)
     : (openMin + 24 * 60 - utcMin)
     : (openMin - utcMin);
 
+  // Minutes until the market week reopens (Sunday 21:00 UTC) — crosses days.
+  const minutesToSunday2100 = (() => {
+    if (dow === 6) return (7 - dow) * 24 * 60 + 21 * 60 - utcMin;           // Sat → Sun
+    if (dow === 5 && utcMin >= 21 * 60) return 3 * 24 * 60 + 21 * 60 - utcMin; // Fri night → Sun
+    return 21 * 60 - utcMin;                                                 // Sun early
+  })();
+
   let status: SessionInfo['status'];
-  if (dayClosed) status = 'closed';
+  if (weekendClosed) status = 'closed';
   else if (inSession && minsToClose <= 45) status = 'closing-soon';
   else if (inSession) status = 'open';
-  else if (!inSession && opensIn <= 30) status = 'opening-soon';
+  else if (!inSession && opensInToday <= 30) status = 'opening-soon';
   else status = 'closed';
 
   const local = new Date(now.getTime() + offset * 3600_000);
@@ -87,8 +104,21 @@ function sessionStatus(
     offset,
     status,
     localTime: fmtHm(local), // dashboard cards: HH:MM (no live seconds)
-    utcTime: fmtHms(now)     // header clocks keep HH:MM:SS
+    utcTime: fmtHms(now),    // header clocks keep HH:MM:SS
+    weekend: weekendClosed,
+    reopensInMin: weekendClosed ? minutesToSunday2100 : null
   };
+}
+
+/** True while the FX market week is live (Fri 21:00 UTC → Sun 21:00 UTC closed). */
+export function isMarketOpen(now: Date): boolean {
+  const dow = now.getUTCDay();
+  const utcMin = now.getUTCHours() * 60 + now.getUTCMinutes();
+  return !(
+    dow === 6 ||
+    (dow === 5 && utcMin >= 21 * 60) ||
+    (dow === 0 && utcMin < 21 * 60)
+  );
 }
 
 /** Live market clock + session bar — header only. UTC + WAT tick every second
@@ -162,9 +192,15 @@ export default function MarketSessions() {
       {sessions.map(chip)}
       {!anyOpen && (
         <span className={`session-banner ${opening || closing ? 'session-soon' : 'session-closed'}`}>
-          {opening ? '🌅 New York session opens in ~30 min'
+          {opening ? `🌅 ${opening.name} session opens in ~30 min`
             : closing ? '🌇 Session closing soon'
-            : '🌙 Forex market closed — weekend'}
+            : `🌙 Forex market closed — weekend · reopens in ${(() => {
+                const m = sessions[0]?.reopensInMin ?? 0;
+                const d = Math.floor(m / 1440);
+                const h = Math.floor((m % 1440) / 60);
+                const mm = m % 60;
+                return d > 0 ? `${d}d ${h}h` : h > 0 ? `${h}h ${mm}m` : `${mm}m`;
+              })()}`}
         </span>
       )}
     </div>

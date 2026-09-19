@@ -223,6 +223,14 @@ export interface CurrencyStrength {
   score: number; // -42..42 display scale
   delta1d: number;
   delta7d: number;
+  /** Raw all-against-all % over the last 30 days. */
+  delta30d: number | null;
+  /** 3-day momentum of the all-against-all score (raw %). */
+  momentum3d: number | null;
+  /** Std-dev of the last 10 daily all-against-all scores (raw %) — volatility. */
+  vol10: number | null;
+  /** How many of the 7 direct crosses moved in this currency's favour (7d). */
+  breadth: number | null;
 }
 
 export interface StrengthResult {
