@@ -20,7 +20,7 @@ function SMCPageInner() {
     <div className="page">
       <div className="page-title">
         <h1>Smart Money Concepts</h1>
-        <p>Dedicated SMC breakdown — structure, liquidity, order blocks and dealing-range positioning per pair and timeframe.</p>
+        <p>Structure, liquidity, order blocks and dealing-range positioning per pair and timeframe.</p>
       </div>
       <PairSelect defaultPair={pair} defaultTf={tf} tfLabel="Timeframe" />
       <div className="status-bar">

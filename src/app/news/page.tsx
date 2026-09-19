@@ -9,7 +9,7 @@ export default function NewsPage() {
     <div className="page">
       <div className="page-title">
         <h1>FX News Room</h1>
-        <p>Live forex news aggregation from major sources — headlines classified by market impact with AI-generated market outlook and probable short-term action signals. Auto-refreshes every 60 seconds.</p>
+        <p>Live headlines by market impact, the economic calendar and app-generated flips. Auto-refreshes every 60s.</p>
       </div>
       <AiSummary />
       <NewsRoom />

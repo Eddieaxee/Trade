@@ -18,7 +18,7 @@ function CRTPageInner() {
     <div className="page">
       <div className="page-title">
         <h1>Candle Range Theory</h1>
-        <p>Dedicated CRT analysis — range phase model (Developing → Confirming → Confirmed → Invalidated), manipulation, sweep, reclaim, displacement and confirmation per pair and timeframe.</p>
+        <p>Candle Range Theory per pair and timeframe — range phase, manipulation, sweep, reclaim, displacement and confirmation.</p>
       </div>
       <PairSelect defaultPair={pair} defaultTf={tf} tfLabel="Timeframe" />
       <div className="status-bar">

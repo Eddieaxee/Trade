@@ -1,16 +1,17 @@
-// ── Multi-timeframe currency-strength matrix (star-pair decomposition) ──────
-// For every timeframe, the 7 EUR-star pairs are fetched once (cached), each
-// currency's return vs EUR is isolated over a rolling window, then z-scored
-// across the 8 currencies. Any cross AB ≈ r_A − r_B follows exactly, so the
-// full 28-pair matrix comes from 7 real fetches — no invented data.
-// The 30S column is derived from the freshest sub-minute movement available
-// in the 1m feed (keyless providers floor at 1m) and is marked with "†".
+// ── Multi-timeframe currency-strength matrix (all-against-all pairwise) ─────
+// For every timeframe the 7 EUR-star pairs are fetched once (cached). Each
+// currency's raw % move over the rolling window is isolated, then every
+// currency is measured directly against all 7 others (ch(A vs B) = chA − chB,
+// exact in log terms). Scores are raw pairwise % — no anchors, no z-scores.
+// Any cross AB follows exactly, so the full 28-pair matrix comes from 7 real
+// fetches — no invented data. The 30S column is derived from the freshest
+// sub-minute movement in the 1m feed and is marked with "†".
 
 import type { Candle, Granularity, StrengthMatrix, StrengthTFColumn } from '@/lib/types';
 import { CURRENCIES, STAR_PAIRS, TTL_STRENGTH_MATRIX, canonicalPair } from '@/lib/constants';
 import { cacheGet, cacheKey, cacheSet } from '@/lib/cache';
 import { getCandlesCached } from '@/lib/providers';
-import { clamp, mean, stdev } from '@/lib/utils';
+import { mean } from '@/lib/utils';
 
 /** Rolling window (bars) used per timeframe. */
 const WINDOW_BARS: Partial<Record<Granularity, number>> = {
@@ -44,20 +45,22 @@ function livePct(candles: Candle[]): number | null {
   return (b - a) / a * 100;
 }
 
-function zscoreMap(changes: Partial<Record<string, number>>): Record<string, number | null> {
-  const vals = Object.values(changes).filter((v): v is number => Number.isFinite(v as number));
+function pairwiseMap(changes: Partial<Record<string, number>>): Record<string, number | null> {
+  // All-against-all: ch(A vs B) = ch(A) − ch(B) (exact in log terms for these
+  // move sizes). Each currency's score is the raw mean of its signed % change
+  // against all 7 other currencies — no normalization, no z-scores.
   const out: Record<string, number | null> = {};
-  if (vals.length < 4) {
-    for (const c of CURRENCIES) out[c] = null;
-    return out;
-  }
-  const sd = stdev(vals);
-  const m = mean(vals);
-  for (const c of CURRENCIES) {
-    const v = changes[c];
-    out[c] = Number.isFinite(v as number) && sd > 0
-      ? clamp(((v as number) - m) / sd / 2.5, -1, 1) * 100
-      : 0;
+  for (const a of CURRENCIES) {
+    const vals: number[] = [];
+    for (const b of CURRENCIES) {
+      if (a === b) continue;
+      const ca = changes[a];
+      const cb = changes[b];
+      if (Number.isFinite(ca as number) && Number.isFinite(cb as number)) {
+        vals.push((ca as number) - (cb as number));
+      }
+    }
+    out[a] = vals.length ? Math.round(mean(vals) * 1000) / 1000 : null;
   }
   return out;
 }
@@ -111,7 +114,7 @@ function columnFrom(series: StarSeries, tfLabel: string, bars: number, useLive: 
       changes[ccy] = ch ?? NaN;
     }
   }
-  const scores = zscoreMap(changes);
+  const scores = pairwiseMap(changes);
   const deltas: Record<string, number | null> = {};
   for (const c of CURRENCIES) {
     const v = changes[c];
@@ -126,7 +129,7 @@ import { getRatesCached } from '@/lib/analysis/index';
 import { sleep } from '@/lib/utils';
 
 const BASE_NOTE =
-  'Scores are cross-sectional z-scores over the rolling window: relative strength, always summing to ≈ 0.';
+  'Scores are raw all-against-all pairwise % changes: each currency is measured directly against all 7 others — no anchors, no z-scores.';
 
 /** Max open provider requests at once (avoids Yahoo/limit blocks). */
 const BATCH_LIMIT = 3;
@@ -234,7 +237,58 @@ export async function buildStrengthMatrix(): Promise<StrengthMatrix> {
   return { updatedAt: Date.now() / 1000, sources: ['yahoo', 'frankfurter'], tfs: cols, notes: merged_notes };
 }
 
-const MATRIX_KEY = cacheKey('strength-matrix', 'v3');
+const MATRIX_KEY = cacheKey('strength-matrix', 'v4');
+
+// ── Date-anchored strength history (MarketMilk-style lines) ─────────────────
+export interface StrengthHistoryPoint {
+  date: string; // YYYY-MM-DD
+  scores: Record<string, number | null>; // ccy → cumulative all-against-all % since window start
+}
+
+/**
+ * Cumulative all-against-all % move per currency from the window start date,
+ * day by day — exactly how BabyPips MarketMilk traces strength over 1W / 1M.
+ * Built from the daily ECB/Frankfurter reference-rate series (keyless).
+ */
+export async function buildStrengthHistory(days: number): Promise<{
+  range: string;
+  points: StrengthHistoryPoint[];
+  notes: string[];
+}> {
+  const notes: string[] = [];
+  const { series } = await getRatesCached();
+  if (series.length < 3) throw new Error('rate history too short for strength lines');
+  const window = series.slice(-Math.max(3, days));
+  const start = window[0];
+  const startRate: Record<string, number> = {};
+  for (const ccy of CURRENCIES) {
+    const v = ccy === 'EUR' ? 1 : start.rates[ccy];
+    if (Number.isFinite(v as number) && (v as number) > 0) startRate[ccy] = v as number;
+  }
+  const points: StrengthHistoryPoint[] = window.map((pt) => {
+    // % move of each currency vs EUR since window start (EURXXX inverse).
+    const ch: Partial<Record<string, number>> = {};
+    for (const ccy of CURRENCIES) {
+      const s0 = startRate[ccy];
+      const now = ccy === 'EUR' ? 1 : pt.rates[ccy];
+      if (!s0 || !Number.isFinite(now as number) || (now as number) <= 0) continue;
+      // EURX = 1 EUR in X → X vs EUR change = s0/now − 1 (X appreciated when now drops).
+      ch[ccy] = ccy === 'EUR' ? 0 : (s0 / (now as number) - 1) * 100;
+    }
+    // All-against-all: ch(A vs B) = chA − chB → mean over the other 7.
+    const scores: Record<string, number | null> = {};
+    const finite = CURRENCIES.filter((c) => Number.isFinite(ch[c] as number));
+    const m = finite.length ? mean(finite.map((c) => ch[c] as number)) : 0;
+    for (const c of CURRENCIES) {
+      scores[c] = Number.isFinite(ch[c] as number)
+        ? Math.round(((ch[c] as number) - m) * 1000) / 1000
+        : null;
+    }
+    return { date: new Date(pt.t * 1000).toISOString().slice(0, 10), scores };
+  });
+  notes.push('Cumulative all-against-all % move from the window start (0 = start date).');
+  return { range: days <= 10 ? '1w' : '1m', points, notes };
+}
 
 export async function getStrengthMatrixCached(): Promise<StrengthMatrix> {
   const hit = await cacheGet<StrengthMatrix>(MATRIX_KEY);

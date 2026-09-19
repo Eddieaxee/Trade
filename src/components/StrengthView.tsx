@@ -6,13 +6,23 @@ import type { StrengthMatrix, StrengthTFColumn } from '@/lib/types';
 import { CURRENCIES, canonicalPair } from '@/lib/constants';
 import { fmtAgo } from '@/lib/utils';
 
-const tone = (v: number | null) =>
-  v === null ? 'tone-muted' : v > 8 ? 'tone-up' : v < -8 ? 'tone-down' : '';
+const fmtVal = (v: number | null) =>
+  v === null ? '—' : `${v > 0 ? '+' : ''}${Math.abs(v) >= 1 ? v.toFixed(1) : v.toFixed(2)}`;
 
-function cellBg(v: number | null): string {
+const tone = (v: number | null, scale = 1) =>
+  v === null ? 'tone-muted' : v > scale * 0.35 ? 'tone-up' : v < -scale * 0.35 ? 'tone-down' : '';
+
+/** Adaptive column scale — raw pairwise % moves are small, so color/alpha
+ *  intensity is relative to the strongest currency in the column. */
+function colScale(col: { scores: Record<string, number | null> }): number {
+  const vals = Object.values(col.scores).filter((v): v is number => typeof v === 'number');
+  return Math.max(0.1, ...vals.map((v) => Math.abs(v)));
+}
+
+function cellBg(v: number | null, scale = 1): string {
   if (v === null) return 'transparent';
   const c = v >= 0 ? '38, 194, 129' : '240, 80, 106';
-  const a = Math.min(0.5, Math.abs(v) / 100);
+  const a = Math.min(0.5, Math.abs(v) / scale);
   return `rgba(${c}, ${a})`;
 }
 
@@ -32,9 +42,10 @@ function Heatmap({ matrix }: { matrix: StrengthMatrix }) {
               <td><strong>{ccy}</strong></td>
               {matrix.tfs.map((c) => {
                 const v = c.scores[ccy];
+                const s = colScale(c);
                 return (
-                  <td key={c.tf} style={{ background: cellBg(v), fontFamily: 'var(--mono)' }}>
-                    <span className={tone(v)}>{v !== null ? `${v > 0 ? '+' : ''}${v.toFixed(1)}` : '—'}</span>
+                  <td key={c.tf} style={{ background: cellBg(v, s), fontFamily: 'var(--mono)' }}>
+                    <span className={tone(v, s)}>{fmtVal(v)}</span>
                   </td>
                 );
               })}
@@ -53,23 +64,24 @@ function Ranking({ col }: { col: StrengthTFColumn }) {
     .sort((a, b) => (b.s as number) - (a.s as number));
   const hi = sorted[0];
   const lo = sorted[sorted.length - 1];
+  const bestSym = hi && lo ? canonicalPair(hi.c, lo.c) : null;
   return (
     <div className="strong-card">
       <div className="code">{col.tf}</div>
       <div className="strong-delta">
-        <span className="tone-up">{hi?.c} {hi?.s !== null && hi?.s !== undefined ? `+${hi.s.toFixed(1)}` : ''}</span>
+        <span className="tone-up">{hi?.c} {hi?.s !== null && hi?.s !== undefined ? fmtVal(hi.s) : ''}</span>
         {' vs '}
-        <span className="tone-down">{lo?.c} {lo?.s !== null && lo?.s !== undefined ? lo.s.toFixed(1) : ''}</span>
+        <span className="tone-down">{lo?.c} {lo?.s !== null && lo?.s !== undefined ? fmtVal(lo.s) : ''}</span>
       </div>
       <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 2 }}>
-        Best pair: {hi && lo ? `${hi.c}${lo.c}` : '—'}
+        Best pair: {bestSym ? `${bestSym.slice(0, 3)}/${bestSym.slice(3)}` : '—'}
       </div>
     </div>
   );
 }
 
 function Histogram({ col }: { col: StrengthTFColumn }) {
-  const max = Math.max(20, ...CURRENCIES.map((c) => Math.abs(col.scores[c] ?? 0)));
+  const max = colScale(col);
   return (
     <div className="hbar">
       {CURRENCIES.map((c) => {
@@ -82,7 +94,7 @@ function Histogram({ col }: { col: StrengthTFColumn }) {
               <span className="mid" />
               <span className="f" style={{ left: v >= 0 ? '50%' : `${50 - (Math.abs(v) / max) * 50}%`, width: `${(Math.abs(v) / max) * 50}%`, background: v >= 0 ? 'var(--up)' : 'var(--down)' }} />
             </span>
-            <span className="vl">{v > 0 ? '+' : ''}{v.toFixed(1)}</span>
+            <span className="vl">{fmtVal(v)}</span>
           </div>
         );
       })}
@@ -96,12 +108,13 @@ function Dots({ col }: { col: StrengthTFColumn }) {
       {CURRENCIES.map((c) => {
         const v = col.scores[c];
         if (v === null) return null;
-        const r = 4 + Math.min(10, (Math.abs(v) / 100) * 10);
+        const s = colScale(col);
+        const r = 4 + Math.min(10, (Math.abs(v) / s) * 10);
         return (
-          <span key={c} title={`${c} ${v > 0 ? '+' : ''}${v.toFixed(1)}`} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 2, fontSize: 10.5, fontFamily: 'var(--mono)', color: 'var(--muted)' }}>
-            <span style={{ width: r * 2, height: r * 2, borderRadius: '50%', background: v >= 0 ? 'var(--up)' : 'var(--down)', opacity: 0.35 + Math.min(0.65, Math.abs(v) / 100), display: 'inline-block' }} />
+          <span key={c} title={`${c} ${fmtVal(v)}`} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 2, fontSize: 10.5, fontFamily: 'var(--mono)', color: 'var(--muted)' }}>
+            <span style={{ width: r * 2, height: r * 2, borderRadius: '50%', background: v >= 0 ? 'var(--up)' : 'var(--down)', opacity: 0.35 + Math.min(0.65, Math.abs(v) / s), display: 'inline-block' }} />
             <b style={{ color: 'var(--text)' }}>{c}</b>
-            <span className={tone(v)}>{v > 0 ? '+' : ''}{v.toFixed(1)}</span>
+            <span className={tone(v, s)}>{fmtVal(v)}</span>
           </span>
         );
       })}
@@ -109,62 +122,104 @@ function Dots({ col }: { col: StrengthTFColumn }) {
   );
 }
 
-function Lines({ matrix }: { matrix: StrengthMatrix }) {
-  const W = 640;
-  const H = 210;
-  const PAD = 30;
-  // Date-anchored: each TF column carries a real timestamp (updatedAt).
-  // Intraday columns interpolate between updatedAt-24h … updatedAt; daily
-  // columns between updatedAt-7d … updatedAt; weekly ≈ updatedAt-30d.
-  const pts = matrix.tfs.map((c, i) => {
-    const spanMs = c.tf === '1w' ? 30 * 864e5 : (c.tf === '1d' ? 7 * 864e5 : 864e5);
-    return { tf: c.tf, t: matrix.updatedAt * 1000 - Math.max(0, (matrix.tfs.length - 1 - i)) * (spanMs / Math.max(1, matrix.tfs.length - 1)), col: c };
-  });
-  const series = CURRENCIES.map((ccy, ci) => ({
-    ccy,
-    color: `hsl(${(ci * 360) / CURRENCIES.length} 70% 55%)`,
-    vals: pts.map((p) => p.col.scores[ccy]),
-  }));
-  const all = pts.flatMap((p) => CURRENCIES.map((ccy) => p.col.scores[ccy]).filter((v): v is number => typeof v === 'number'));
-  const lo = all.length ? Math.min(...all) : -100;
-  const hi = all.length ? Math.max(...all) : 100;
-  const span = Math.max(1, hi - lo);
-  const x = (i: number) => PAD + (i / Math.max(1, pts.length - 1)) * (W - PAD * 2);
+
+interface HistoryPoint {
+  date: string;
+  scores: Record<string, number | null>;
+}
+
+const LINE_COLORS: Record<string, string> = {
+  USD: '#38c281', EUR: '#3aa5ff', GBP: '#b48cff', JPY: '#ff6b81',
+  CHF: '#ff4d4d', AUD: '#ffa94d', CAD: '#4dd4ff', NZD: '#c3e88d',
+};
+
+/** MarketMilk-style lines: cumulative all-against-all % move per currency
+ *  from the window start date. X-axis = dates; 1W / 1M selector. */
+function Lines() {
+  const [range, setRange] = useState<'1w' | '1m'>('1w');
+  const [points, setPoints] = useState<HistoryPoint[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setErr(null);
+    fetch(`/api/analysis/strength-history?range=${range}`, { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d: { points?: HistoryPoint[] }) => {
+        if (alive && d.points?.length) setPoints(d.points);
+        else if (alive) setErr('No history available.');
+      })
+      .catch((e: unknown) => { if (alive) setErr(e instanceof Error ? e.message : 'load failed'); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [range]);
+
+  const W = 720;
+  const H = 240;
+  const PAD = 38;
+
+  if (loading) return <div className="panel" style={{ padding: '24px 0', textAlign: 'center' }}><span className="spinner" /> <span className="tone-muted">Loading strength lines…</span></div>;
+  if (err || !points.length) return <div className="panel"><p className="tone-muted">⚠ {err ?? 'No history available.'}</p></div>;
+
+  const all = points.flatMap((p) => CURRENCIES.map((c) => p.scores[c]).filter((v): v is number => typeof v === 'number'));
+  const lo = Math.min(0, ...all);
+  const hi = Math.max(0, ...all);
+  const span = Math.max(0.1, hi - lo);
+  const x = (i: number) => PAD + (i / Math.max(1, points.length - 1)) * (W - PAD * 2);
   const y = (v: number) => PAD + (1 - (v - lo) / span) * (H - PAD * 2);
-  const zeroY = y(clampNum(0, lo, hi));
-  const dateLbl = (ms: number) => {
-    const d = new Date(ms);
-    return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+  const zeroY = y(0);
+  const fmtVal = (v: number) => `${Math.abs(v) >= 1 ? v.toFixed(1) : v.toFixed(2)}%`;
+  const dateLbl = (iso: string) => {
+    const [, m, d] = iso.split('-');
+    return `${d}/${m}`;
   };
+  // Show ~every other date label on the 1M view so they don't collide.
+  const labelStep = points.length > 14 ? 3 : points.length > 8 ? 2 : 1;
+
   return (
     <div style={{ overflowX: 'auto' }}>
-      <svg width={W} height={H} role="img" aria-label="Currency strength lines by date">
-        <line x1={PAD} x2={W - PAD} y1={zeroY} y2={zeroY} stroke="var(--border)" strokeDasharray="4 3" />
-        {[0.25, 0.5, 0.75].map((f) => {
-          const gy = PAD + f * (H - PAD * 2);
-          return <line key={f} x1={PAD} x2={W - PAD} y1={gy} y2={gy} stroke="var(--border)" strokeDasharray="2 4" opacity={0.5} />;
-        })}
-        {series.map((s) => {
-          const d = s.vals.map((v, i) => (typeof v === 'number' ? `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(v).toFixed(1)}` : '')).join(' ');
-          return <path key={s.ccy} d={d} fill="none" stroke={s.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" opacity={0.92} />;
-        })}
-        {pts.map((p, i) => (
-          <g key={`${p.tf}-${i}`}>
-            <text x={x(i)} y={H - 18} fontSize={9} fill="var(--muted)" textAnchor="middle" fontFamily="var(--mono)">{dateLbl(p.t)}</text>
-            <text x={x(i)} y={H - 6} fontSize={8.5} fill="var(--muted)" textAnchor="middle" fontFamily="var(--mono)" opacity={0.75}>{p.tf}</text>
-          </g>
-        ))}
-        <text x={PAD - 4} y={PAD - 6} fontSize={9} fill="var(--muted)" textAnchor="end" fontFamily="var(--mono)">{hi.toFixed(0)}</text>
-        <text x={PAD - 4} y={H - PAD + 3} fontSize={9} fill="var(--muted)" textAnchor="end" fontFamily="var(--mono)">{lo.toFixed(0)}</text>
-      </svg>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 6, fontSize: 11, fontFamily: 'var(--mono)' }}>
-        {series.map((s) => (
-          <span key={s.ccy} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--muted)' }}>
-            <span style={{ width: 10, height: 3, borderRadius: 2, background: s.color, display: 'inline-block' }} />{s.ccy}
-          </span>
+      <div className="news-tabs" style={{ margin: '0 0 10px', width: 'fit-content' }}>
+        {(['1w', '1m'] as const).map((r) => (
+          <button key={r} className={`news-tab ${range === r ? 'active' : ''}`} onClick={() => setRange(r)}>
+            {r === '1w' ? 'Last 7 days' : 'Last 30 days'}
+          </button>
         ))}
       </div>
-      <p className="tone-muted" style={{ fontSize: 11, margin: '6px 0 0' }}>Date-anchored trace (DD/MM under each TF column) — shows past movement across the matrix window, not raw TF labels.</p>
+      <svg width={W} height={H} role="img" aria-label={`Currency strength movement over the ${range === '1w' ? 'past week' : 'past month'}`}>
+        {[0, 0.25, 0.5, 0.75, 1].map((f) => {
+          const gy = PAD + f * (H - PAD * 2);
+          return <line key={f} x1={PAD} x2={W - PAD} y1={gy} y2={gy} stroke="var(--border)" strokeDasharray={f === 0.5 ? '' : '2 4'} opacity={f === 0.5 ? 0.9 : 0.5} />;
+        })}
+        <text x={PAD - 5} y={PAD + 3} fontSize={9} fill="var(--muted)" textAnchor="end" fontFamily="var(--mono)">{fmtVal(hi)}</text>
+        <text x={PAD - 5} y={H - PAD + 3} fontSize={9} fill="var(--muted)" textAnchor="end" fontFamily="var(--mono)">{fmtVal(lo)}</text>
+        <text x={PAD - 5} y={zeroY + 3} fontSize={9} fill="var(--muted)" textAnchor="end" fontFamily="var(--mono)">0</text>
+        {CURRENCIES.map((ccy) => {
+          const d = points
+            .map((p, i) => (typeof p.scores[ccy] === 'number' ? `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(p.scores[ccy] as number).toFixed(1)}` : ''))
+            .join(' ');
+          const last = [...points].reverse().find((p) => typeof p.scores[ccy] === 'number');
+          const lx = x(points.length - 1) + 4;
+          const ly = last ? y(last.scores[ccy] as number) : 0;
+          return (
+            <g key={ccy}>
+              <path d={d} fill="none" stroke={LINE_COLORS[ccy] ?? '#888'} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" opacity={0.95} />
+              {last && (
+                <text x={Math.min(lx, W - 30)} y={ly + 3} fontSize={9.5} fontWeight={700} fill={LINE_COLORS[ccy] ?? '#888'} fontFamily="var(--mono)">{ccy}</text>
+              )}
+            </g>
+          );
+        })}
+        {points.map((p, i) => (
+          i % labelStep === 0 || i === points.length - 1 ? (
+            <text key={p.date} x={x(i)} y={H - 10} fontSize={9} fill="var(--muted)" textAnchor="middle" fontFamily="var(--mono)">{dateLbl(p.date)}</text>
+          ) : null
+        ))}
+      </svg>
+      <p className="tone-muted" style={{ fontSize: 11, margin: '6px 0 0' }}>
+        Cumulative % move vs every other currency from the window start (0 line = start date). Date labels DD/MM.
+      </p>
     </div>
   );
 }
@@ -182,13 +237,16 @@ function Volatility({ matrix }: { matrix: StrengthMatrix }) {
     const prev = vals.length > 1 ? vals[vals.length - 2] : last;
     const spread = Math.max(...vals) - Math.min(...vals);
     const momentum = last - prev;
+    // Adaptive thresholds for raw pairwise % values.
+    const thr = Math.max(0.05, spread * 0.4);
+    const momThr = Math.max(0.02, spread * 0.15);
     const regime =
-      last > 8 && momentum < 0 ? 'Bullish but weakening' :
-      last > 8 ? 'Bullish & firming' :
-      last < -8 && momentum > 0 ? 'Bearish but firming' :
-      last < -8 ? 'Bearish & bleeding' :
-      momentum > 2 ? 'Neutral → bid' :
-      momentum < -2 ? 'Neutral → offered' : 'Range-bound';
+      last > thr && momentum < 0 ? 'Bullish but weakening' :
+      last > thr ? 'Bullish & firming' :
+      last < -thr && momentum > 0 ? 'Bearish but firming' :
+      last < -thr ? 'Bearish & bleeding' :
+      momentum > momThr ? 'Neutral → bid' :
+      momentum < -momThr ? 'Neutral → offered' : 'Range-bound';
     return { ccy, last, momentum, spread, regime };
   }).filter((r): r is NonNullable<typeof r> => r !== null);
   const bySpread = [...rows].sort((a, b) => b.spread - a.spread);
@@ -197,11 +255,11 @@ function Volatility({ matrix }: { matrix: StrengthMatrix }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, marginBottom: 10 }}>
         <div className="strong-card">
           <div className="code">Most volatile</div>
-          <div className="strong-delta tone-up">{bySpread[0]?.ccy} ±{bySpread[0]?.spread.toFixed(1)}</div>
+          <div className="strong-delta tone-up">{bySpread[0]?.ccy} ±{fmtVal(bySpread[0]?.spread ?? null)}</div>
         </div>
         <div className="strong-card">
           <div className="code">Calmest</div>
-          <div className="strong-delta tone-muted">{bySpread[bySpread.length - 1]?.ccy} ±{bySpread[bySpread.length - 1]?.spread.toFixed(1)}</div>
+          <div className="strong-delta tone-muted">{bySpread[bySpread.length - 1]?.ccy} ±{fmtVal(bySpread[bySpread.length - 1]?.spread ?? null)}</div>
         </div>
       </div>
       <div style={{ overflowX: 'auto' }}>
@@ -211,9 +269,9 @@ function Volatility({ matrix }: { matrix: StrengthMatrix }) {
             {rows.sort((a, b) => b.last - a.last).map((r) => (
               <tr key={r.ccy}>
                 <td><strong>{r.ccy}</strong></td>
-                <td className={r.last > 8 ? 'tone-up' : r.last < -8 ? 'tone-down' : 'tone-muted'}>{r.last > 0 ? '+' : ''}{r.last.toFixed(1)}</td>
-                <td className={r.momentum > 0 ? 'tone-up' : r.momentum < 0 ? 'tone-down' : 'tone-muted'}>{r.momentum > 0 ? '+' : ''}{r.momentum.toFixed(1)}</td>
-                <td className="tone-muted">{r.spread.toFixed(1)}</td>
+                <td className={r.regime.startsWith('Bullish') ? 'tone-up' : r.regime.startsWith('Bearish') ? 'tone-down' : 'tone-muted'}>{fmtVal(r.last)}</td>
+                <td className={r.momentum > 0 ? 'tone-up' : r.momentum < 0 ? 'tone-down' : 'tone-muted'}>{fmtVal(r.momentum)}</td>
+                <td className="tone-muted">{fmtVal(r.spread)}</td>
                 <td><span className={`chip ${r.regime.includes('Bullish') ? 'green' : r.regime.includes('Bearish') ? 'red' : 'gray'}`}>{r.regime}</span></td>
               </tr>
             ))}
@@ -270,7 +328,7 @@ export default function StrengthView({ initial }: { initial: StrengthMatrix }) {
           ))}
         </div>
         {view === 'heatmap' && <Heatmap matrix={matrix} />}
-        {view === 'lines' && <Lines matrix={matrix} />}
+        {view === 'lines' && <Lines />}
         {view === 'volatility' && <Volatility matrix={matrix} />}
       </div>
 
@@ -298,10 +356,10 @@ export default function StrengthView({ initial }: { initial: StrengthMatrix }) {
                 return (
                   <tr key={c.tf}>
                     <td>{c.tf}</td>
-                    <td className="tone-up">{hi?.ccy} {hi?.s !== null && hi?.s !== undefined ? `+${hi.s.toFixed(1)}` : ''}</td>
-                    <td className="tone-down">{lo?.ccy} {lo?.s !== null && lo?.s !== undefined ? lo.s.toFixed(1) : ''}</td>
+                    <td className="tone-up">{hi?.ccy} {hi?.s !== null && hi?.s !== undefined ? fmtVal(hi.s) : ''}</td>
+                    <td className="tone-down">{lo?.ccy} {lo?.s !== null && lo?.s !== undefined ? fmtVal(lo.s) : ''}</td>
                     <td>{sym ? <Link href={`/pair/${sym}`}><span className="chip blue">{sym.slice(0, 3)}/{sym.slice(3)} →</span></Link> : '—'}</td>
-                    <td>{spread !== null ? spread.toFixed(1) : '—'}</td>
+                    <td>{spread !== null ? fmtVal(spread) : '—'}</td>
                   </tr>
                 );
               })}

@@ -19,7 +19,7 @@ export default async function StrengthPage() {
     <div className="page">
       <div className="page-title">
         <h1>Currency Strength</h1>
-        <p>Multi-timeframe relative-strength matrix for EUR, USD, GBP, JPY, CHF, AUD, CAD, NZD. Heatmap, rankings, histograms and strongest-vs-weakest pair combinations across 30S† → 1W. Auto-refreshes every 60s.</p>
+        <p>Multi-timeframe strength for the 8 majors — heatmap, date-based lines, volatility regimes and best pairs. Auto-refreshes every 60s.</p>
       </div>
       {error && (
         <div className="status-bar">

@@ -18,7 +18,7 @@ function IndicatorsPageInner() {
     <div className="page">
       <div className="page-title">
         <h1>Technical Indicators</h1>
-        <p>18 standard indicators per pair and timeframe — SMA/EMA, RSI, MACD, Stochastic, Bollinger, Ichimoku, ATR, OBV, VWAP and more. Buy/Sell speedometer, signal histogram and per-indicator conviction.</p>
+        <p>18 indicators per pair and timeframe with a buy/sell speedometer and per-indicator conviction.</p>
       </div>
       <PairSelect defaultPair={pair} defaultTf={tf} tfLabel="Timeframe" />
       <div className="status-bar">

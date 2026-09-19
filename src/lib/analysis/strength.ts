@@ -1,17 +1,20 @@
 // ── Currency-strength engine ─────────────────────────────────────────────────
-// Full 28-pair cross-matrix summation (no Euro anchor):
+// Full 28-pair all-against-all pairwise engine (no Euro anchor, no z-scores):
 //  1. From EUR-based reference rates derive every cross AB (28 pairs).
 //  2. Raw % change per pair over 1d / 7d.
-//  3. Average each currency's signed changes across the 7 direct pairs it forms
-//     (base +, quote − → inversions handled).
-//  4. Z-score ACROSS THE 8 CURRENCIES (cross-sectional), then blend 1d/7d.
-// EUR's score is the implicit residual → Σ ≈ 0 (relative strength).
+//  3. For each currency, its score is the average of its signed % change in ALL
+//     7 direct crosses it forms, each measured against the OTHER currency
+//     directly (base +, quote − → inversions handled). Every currency is
+//     therefore measured against every other currency — an explicit
+//     all-against-all comparison, not an index and not a z-score.
+//  4. Blended score = 0.45 × 1d + 0.55 × 7d raw % average, displayed on a
+//     fixed linear scale (×40, clamped ±42) so numbers stay readable.
 // Symbols follow institutional base/quote standards via canonicalPair
 // (USDJPY, GBPJPY … — never JPYUSD or USDEUR).
 
 import type { CurrencyStrength, RatePoint, StrengthResult } from '@/lib/types';
 import { CURRENCIES, canonicalPair } from '@/lib/constants';
-import { clamp, mean, pctChange, stdev } from '@/lib/utils';
+import { clamp, mean, pctChange } from '@/lib/utils';
 
 export interface CrossPair {
   base: string;
@@ -56,18 +59,9 @@ function windowChange(series: RatePoint[], pairs: CrossPair[], lookbackSec: numb
   return out;
 }
 
-function zscores(values: number[]): number[] {
-  const finite = values.filter((v) => Number.isFinite(v));
-  if (finite.length < 4) return values.map(() => 0);
-  const sd = stdev(finite);
-  if (sd === 0) return values.map(() => 0);
-  const m = mean(finite);
-  return values.map((v) => (Number.isFinite(v) ? (v - m) / sd : 0));
-}
-
 /**
- * Full 28-pair cross-matrix summation: average each currency's raw % changes
- * across the 7 direct pairs it forms (inversions handled via sign).
+ * Average each currency's raw % changes across the 7 direct pairs it forms
+ * (inversions handled via sign).
  */
 function perCurrencyMean(changes: number[], pairs: CrossPair[]): Record<string, number> {
   const out: Record<string, number> = {};
@@ -84,18 +78,24 @@ function perCurrencyMean(changes: number[], pairs: CrossPair[]): Record<string, 
   return out;
 }
 
-/** Z-score across the 8 per-currency means — the non-anchored baseline. */
-function zscoreAcross(byCcy: Record<string, number>): Record<string, number> {
-  const vals = CURRENCIES.map((c) => byCcy[c]).filter((v) => Number.isFinite(v));
+/**
+ * Explicit all-against-all pairwise average: build the full 28-pair change
+ * matrix from the per-currency changes (ch(AB) = ch(A) − ch(B) in log terms,
+ * exact for these move sizes), then average each currency's signed change
+ * across its 7 direct crosses. No normalization, no z-scores — raw %.
+ */
+export function pairwiseScores(byCcy: Record<string, number>): Record<string, number> {
   const out: Record<string, number> = {};
-  if (vals.length < 4) {
-    for (const c of CURRENCIES) out[c] = 0;
-    return out;
-  }
-  const sd = stdev(vals);
-  const m = mean(vals);
-  for (const c of CURRENCIES) {
-    out[c] = sd > 0 && Number.isFinite(byCcy[c]) ? (byCcy[c] - m) / sd : 0;
+  for (const a of CURRENCIES) {
+    const vals: number[] = [];
+    for (const b of CURRENCIES) {
+      if (a === b) continue;
+      const ca = byCcy[a];
+      const cb = byCcy[b];
+      if (!Number.isFinite(ca) || !Number.isFinite(cb)) continue;
+      vals.push(ca - cb); // signed % change of A against B
+    }
+    out[a] = vals.length ? mean(vals) : 0;
   }
   return out;
 }
@@ -112,16 +112,16 @@ export function computeStrength(series: RatePoint[]): StrengthResult {
     return { updatedAt, source: 'none', currencies, notes };
   }
 
-  // Raw % change per pair, then per-currency mean across its 7 direct pairs.
+  // Raw % change per pair, then the explicit all-against-all pairwise average.
   const change1d = windowChange(series, pairs, 86400);
   const change7d = windowChange(series, pairs, 7 * 86400);
 
-  const avg1d = perCurrencyMean(change1d, pairs);
-  const avg7d = perCurrencyMean(change7d, pairs);
+  const raw1d = perCurrencyMean(change1d, pairs);
+  const raw7d = perCurrencyMean(change7d, pairs);
 
-  // Z-score ACROSS THE 8 CURRENCIES — no isolated Euro anchor.
-  const z1 = zscoreAcross(avg1d);
-  const z7 = zscoreAcross(avg7d);
+  // All-against-all comparison across every other currency — raw %, no z-score.
+  const pw1 = pairwiseScores(raw1d);
+  const pw7 = pairwiseScores(raw7d);
 
   for (const ccy of CURRENCIES) {
     const signed1: number[] = [];
@@ -132,8 +132,8 @@ export function computeStrength(series: RatePoint[]): StrengthResult {
       if (Number.isFinite(change1d[idx])) signed1.push(change1d[idx] * sign);
       if (Number.isFinite(change7d[idx])) signed7.push(change7d[idx] * sign);
     });
-    const blended = 0.45 * (z1[ccy] ?? 0) + 0.55 * (z7[ccy] ?? 0);
-    const score = clamp(blended / 2.4, -1, 1) * 42;
+    const blended = 0.45 * (pw1[ccy] ?? 0) + 0.55 * (pw7[ccy] ?? 0);
+    const score = clamp(blended * 40, -42, 42); // fixed linear display scale
     currencies.push({
       code: ccy,
       score: Math.round(score * 10) / 10,
