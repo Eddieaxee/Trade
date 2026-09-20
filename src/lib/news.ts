@@ -357,6 +357,9 @@ async function fetchFeeds(): Promise<{ items: NewsItem[]; notes: string[] }> {
       notes.push(`${name} feed unavailable — skipped.`);
     }
   }
+  // Global date sort BEFORE the dedupe/cap loop — guarantees the newest
+  // headlines across ALL sources win the slots, never feed-listing order.
+  raw.sort((a, b) => b.date - a.date);
   const seen = new Set<string>();
   const items: NewsItem[] = [];
   for (const r of raw) {
