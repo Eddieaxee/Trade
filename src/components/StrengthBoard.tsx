@@ -5,7 +5,7 @@ import type { StrengthResult } from '@/lib/types';
 
 /** Relative currency-strength board — ranked status cards (not tight pills).
  *  Each card: rank · code · signed score bar · 1d/7d deltas · momentum arrow. */
-export default function StrengthBoard({ strength }: { strength: StrengthResult | null }) {
+export default function StrengthBoard({ strength, compact = false }: { strength: StrengthResult | null; compact?: boolean }) {
   const sorted = useMemo(
     () => (strength?.currencies ? [...strength.currencies].sort((a, b) => b.score - a.score) : []),
     [strength]
@@ -37,11 +37,11 @@ export default function StrengthBoard({ strength }: { strength: StrengthResult |
               <span className={`strength-arrow ${pos ? 'up' : neg ? 'down' : ''}`}>{arrow}</span>
             </div>
             <div className="strength-score">{c.score > 0 ? '+' : ''}{c.score.toFixed(1)}</div>
-            <div className="strength-bar"><span style={{ width: `${barPct}%` }} className={pos ? 'up' : neg ? 'down' : 'flat'} /></div>
+            <div className="strength-bar" role="img" aria-label={`${c.code} strength ${c.score > 0 ? '+' : ''}${c.score.toFixed(1)}`}><span style={{ width: `${barPct}%` }} className={pos ? 'up' : neg ? 'down' : 'flat'} /></div>
             <div className="strength-deltas">
               <span className={c.delta1d >= 0 ? 'tone-up' : 'tone-down'}>1d {c.delta1d > 0 ? '+' : ''}{c.delta1d.toFixed(2)}%</span>
-              <span className="tone-muted">·</span>
-              <span className={c.delta7d >= 0 ? 'tone-up' : 'tone-down'}>7d {c.delta7d > 0 ? '+' : ''}{c.delta7d.toFixed(2)}%</span>
+              {!compact && <span className="tone-muted">·</span>}
+              {!compact && <span className={c.delta7d >= 0 ? 'tone-up' : 'tone-down'}>7d {c.delta7d > 0 ? '+' : ''}{c.delta7d.toFixed(2)}%</span>}
             </div>
           </div>
         );

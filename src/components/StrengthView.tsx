@@ -102,26 +102,39 @@ function Histogram({ col }: { col: StrengthTFColumn }) {
   );
 }
 
-function Dots({ col }: { col: StrengthTFColumn }) {
+function TimeframeBars({ matrix }: { matrix: StrengthMatrix }) {
+  const [tf, setTf] = useState(matrix.tfs[Math.min(4, matrix.tfs.length - 1)]?.tf ?? matrix.tfs[0]?.tf);
+  const col = matrix.tfs.find((c) => c.tf === tf) ?? matrix.tfs[0];
+  if (!col) return null;
+  const max = colScale(col);
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-      {CURRENCIES.map((c) => {
-        const v = col.scores[c];
-        if (v === null) return null;
-        const s = colScale(col);
-        const r = 4 + Math.min(10, (Math.abs(v) / s) * 10);
-        return (
-          <span key={c} title={`${c} ${fmtVal(v)}`} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 2, fontSize: 10.5, fontFamily: 'var(--mono)', color: 'var(--muted)' }}>
-            <span style={{ width: r * 2, height: r * 2, borderRadius: '50%', background: v >= 0 ? 'var(--up)' : 'var(--down)', opacity: 0.35 + Math.min(0.65, Math.abs(v) / s), display: 'inline-block' }} />
-            <b style={{ color: 'var(--text)' }}>{c}</b>
-            <span className={tone(v, s)}>{fmtVal(v)}</span>
-          </span>
-        );
-      })}
-    </div>
+    <>
+      <div className="interval-nav" role="tablist" aria-label="Strength timeframe" style={{ marginBottom: 10 }}>
+        {matrix.tfs.map((c) => (
+          <button key={c.tf} role="tab" aria-selected={c.tf === col.tf} className={c.tf === col.tf ? 'active' : ''} onClick={() => setTf(c.tf)}>
+            {c.tf}
+          </button>
+        ))}
+      </div>
+      <div className="hbar">
+        {CURRENCIES.map((c) => {
+          const v = col.scores[c];
+          if (v === null) return null;
+          return (
+            <div className="row" key={c}>
+              <span className="lb">{c}</span>
+              <span className="track">
+                <span className="mid" />
+                <span className="f" style={{ left: v >= 0 ? '50%' : `${50 - (Math.abs(v) / max) * 50}%`, width: `${(Math.abs(v) / max) * 50}%`, background: v >= 0 ? 'var(--up)' : 'var(--down)' }} />
+              </span>
+              <span className="vl">{fmtVal(v)}</span>
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 }
-
 
 interface HistoryPoint {
   date: string;

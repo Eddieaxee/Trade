@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import type { Granularity, MarketSnapshot } from '@/lib/types';
 import { INTERVALS } from '@/lib/constants';
 import { fmtAgo, fmtClock, fmtPct, fmtPrice } from '@/lib/utils';
@@ -105,8 +106,11 @@ export default function Dashboard() {
           </div>
 
           <div className="panel" style={{ marginBottom: 12 }}>
-            <h3><Icon name="strength" size={13} style={{ marginRight: 4 }} />Currency strength — relative 1d/7d decomposition (EUR-based rates)</h3>
-            <StrengthBoard strength={snapshot.strength} />
+            <h3><Icon name="strength" size={13} style={{ marginRight: 4 }} />Currency strength — all-against-all pairwise scores (1d/7d)</h3>
+            <StrengthBoard strength={snapshot.strength} compact />
+            <div style={{ marginTop: 10 }}>
+              <Link href="/strength" className="pair-link" style={{ fontSize: 12.5 }}>Open full MarketMilk suite — gauges, heatmaps, volatility →</Link>
+            </div>
           </div>
 
           <PairTable snapshot={snapshot} />

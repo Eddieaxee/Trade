@@ -191,37 +191,6 @@ export default function HeroCanvas() {
       }
       ctx.restore();
 
-      // Cartoon currency characters interacting in the background
-      const characters = [
-        { sym: '$', color: '#26c281', size: 28 },
-        { sym: '€', color: '#3aa5ff', size: 26 },
-        { sym: '£', color: '#e6a23c', size: 24 },
-        { sym: '¥', color: '#f0506a', size: 24 }
-      ];
-      ctx.save();
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      for (let i = 0; i < characters.length; i++) {
-        const ch = characters[i];
-        const speed = 0.3 + i * 0.05;
-        const bob = Math.sin(time * 1.2 + i * 1.5) * 15;
-        const phase = time * speed + i * (Math.PI * 2 / characters.length);
-        const orbitR = 80 + i * 30;
-        const cx = globeX + Math.cos(phase) * orbitR * 0.4;
-        const cy = globeY + bob + Math.sin(phase * 0.7) * 25;
-        const grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, ch.size * 1.5);
-        grd.addColorStop(0, ch.color + '30');
-        grd.addColorStop(1, ch.color + '00');
-        ctx.fillStyle = grd;
-        ctx.beginPath();
-        ctx.arc(cx, cy, ch.size * 1.5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.font = `bold ${ch.size}px var(--mono), monospace`;
-        ctx.fillStyle = ch.color + 'cc';
-        ctx.fillText(ch.sym, cx, cy);
-      }
-      ctx.restore();
-
       raf = requestAnimationFrame(draw);
     };
     raf = requestAnimationFrame(draw);

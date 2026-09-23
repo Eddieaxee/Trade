@@ -8,7 +8,10 @@ export type IconName =
   | 'chevron-down' | 'external'
   | 'calendar' | 'refresh' | 'bell'
   | 'settings' | 'chevron-up' | 'chevron-left' | 'chevron-right' | 'inflow'
-  | 'chart-line' | 'chart-bar' | 'search' | 'user';
+  | 'chart-line' | 'chart-bar' | 'search' | 'user'
+  | 'sunrise' | 'sunset' | 'flame' | 'snowflake' | 'gauge' | 'activity'
+  | 'sparkles' | 'crosshair' | 'compass' | 'pin' | 'hourglass' | 'waves' | 'grid';
+
 
 const PATHS: Record<IconName, JSX.Element> = {
   sun: <><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M4.93 4.93l1.41 1.41"/><path d="M17.66 17.66l1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="M4.93 19.07l1.41-1.41"/><path d="M17.66 6.34l1.41-1.41"/></>,
@@ -21,19 +24,21 @@ const PATHS: Record<IconName, JSX.Element> = {
   dashboard: <><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></>,
   strength: (
     <>
-      <path d="M21 12.5h-4" />
-      <path d="M17 12.5l-3 8-7-16-3 8h-4" />
-      <path d="M6 10l3 5" />
-      <path d="M9.5 7.5l3 5" />
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="3.4" />
+      <path d="M12 3v5.6" />
+      <path d="M21 12h-5.6" />
+      <path d="M12 21v-5.6" />
+      <path d="M3 12h5.6" />
     </>
   ),
   smc: (
     <>
-      <path d="M3 4v16" />
-      <path d="M3 4h18" />
-      <path d="M15 17l4-7" />
-      <path d="M19 10l-4 7" />
-      <path d="M9 17l3-6" />
+      <path d="M3 19.5 8.5 12l4 4L21 4.5" />
+      <circle cx="3" cy="19.5" r="1.3" />
+      <circle cx="8.5" cy="12" r="1.3" />
+      <circle cx="12.5" cy="16" r="1.3" />
+      <circle cx="21" cy="4.5" r="1.3" />
     </>
   ),
   indicators: (
@@ -76,18 +81,18 @@ const PATHS: Record<IconName, JSX.Element> = {
     </>
   ),
   check: <path d="M20 6L9 17l-4-4" />,
-  star: <path d="m12 2 3.4 6.6 7.4.8-5.4 5.2 1.4 7-6.2-3.6L5.4 17.6 0 12.4l7.4-1 3.4-6.6 6.2 3.6L18.6 7l-6.2 3.6 1.4-7z" />,
+  star: <path d="m12 2.6 2.95 5.98 6.6.96-4.78 4.66 1.13 6.58L12 17.68l-5.9 3.1 1.13-6.58L2.45 9.54l6.6-.96z" />,
   alert: (
     <>
-      <path d="M12 8v5" />
-      <path d="M12 16.5h.01" />
-      <path d="M6.5 3.5L1.8 18.2a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L17.5 3.5a2 2 0 0 0-3.4 0z" />
+      <path d="M12 8.5v4.5" />
+      <path d="M12 16.4h.01" />
+      <path d="M10.3 3.9 2.4 17.6a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
     </>
   ),
   trend: (
     <>
-      <path d="M22 8L13 17l-4-4 3-3" />
-      <path d="M17 8h4v4" />
+      <path d="M3 17.5 9.5 11l4 4L21 7.5" />
+      <path d="M15.5 7.5H21v5.5" />
     </>
   ),
   layers: (
@@ -100,14 +105,14 @@ const PATHS: Record<IconName, JSX.Element> = {
   zap: <path d="M13 2 3 14h7l1 8 10-12H13z" />,
   'trending-up': (
     <>
-      <path d="M22 8L13 17l-4-4 3-3" />
-      <path d="M17 8h4v4" />
+      <path d="M3 17.5 9.5 11l4 4L21 7.5" />
+      <path d="M15.5 7.5H21v5.5" />
     </>
   ),
   'trending-down': (
     <>
-      <path d="M22 16l-9-9-3 3 6 6-4 4" />
-      <path d="M17 16h4v-4" />
+      <path d="M3 6.5 9.5 13l4-4L21 16.5" />
+      <path d="M15.5 16.5H21V11" />
     </>
   ),
   volume: (
@@ -176,7 +181,7 @@ const PATHS: Record<IconName, JSX.Element> = {
     </>
   ),
   'chevron-up': <path d="M6 15l6-6 6 6" />,
-  'chevron-left': <path d="M15 6l6 6-6 6" />,
+  'chevron-left': <path d="M15 6l-6 6 6 6" />,
   'chevron-right': <path d="M9 6l6 6-6 6" />,
   inflow: (
     <>
@@ -203,13 +208,101 @@ const PATHS: Record<IconName, JSX.Element> = {
   search: (
     <>
       <circle cx="11" cy="11" r="7" />
-      <path d="M20 20l3 3" />
+      <path d="M20.5 20.5 16.2 16.2" />
     </>
   ),
   user: (
     <>
       <path d="M20 21v-3a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v3" />
       <circle cx="12" cy="7.5" r="3.5" />
+    </>
+  ),
+  sunrise: (
+    <>
+      <path d="M12 2v4" />
+      <path d="M5.6 5.6 8 8" />
+      <path d="M2 12h4" />
+      <path d="M18 12h4" />
+      <path d="M18.4 5.6 16 8" />
+      <path d="M8 18a4 4 0 0 1 8 0" />
+      <path d="M2 22h20" />
+    </>
+  ),
+  sunset: (
+    <>
+      <path d="M12 10V6" />
+      <path d="M5.6 13.6 8 11.2" />
+      <path d="M2 18h4" />
+      <path d="M18 18h4" />
+      <path d="M18.4 13.6 16 11.2" />
+      <path d="M8 18a4 4 0 0 1 8 0" />
+      <path d="M2 22h20" />
+    </>
+  ),
+  flame: <path d="M12 22c4 0 6.5-2.7 6.5-6.3 0-4.6-5-5.9-3.4-11.7-3 1-5.6 3.7-5.6 6.4 0 1.2.3 2 .3 2.6 0 1-.7 1.6-1.6 1.6-1 0-1.7-.9-1.7-2.3 0-.5 0-1 .2-1.5C5.6 12.6 5.5 14 5.5 15.5 5.5 19.2 8 22 12 22z" />,
+  snowflake: (
+    <>
+      <path d="M12 2v20" />
+      <path d="M4.2 7l15.6 10" />
+      <path d="M19.8 7 4.2 17" />
+      <path d="M9.5 4.5 12 7l2.5-2.5" />
+      <path d="M9.5 19.5 12 17l2.5 2.5" />
+    </>
+  ),
+  gauge: (
+    <>
+      <path d="M12 14a2 2 0 1 0 2-2" />
+      <path d="M13.4 10.6 20 5.5" />
+      <path d="M3.5 20a10 10 0 1 1 17 0" />
+    </>
+  ),
+  activity: <path d="M3 12h4l3-8 4 16 3-8h4" />,
+  sparkles: (
+    <>
+      <path d="M12 3.5c.7 3.1 1.9 4.3 5 5-3.1.7-4.3 1.9-5 5-.7-3.1-1.9-4.3-5-5 3.1-.7 4.3-1.9 5-5z" />
+      <path d="M18.5 14c.4 1.7 1 2.3 2.7 2.7-1.7.4-2.3 1-2.7 2.7-.4-1.7-1-2.3-2.7-2.7 1.7-.4 2.3-1 2.7-2.7z" />
+      <path d="M6.5 16c.3 1.2.7 1.6 1.9 1.9-1.2.3-1.6.7-1.9 1.9-.3-1.2-.7-1.6-1.9-1.9 1.2-.3 1.6-.7 1.9-1.9z" />
+    </>
+  ),
+  crosshair: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 2.5v5M12 16.5v5M2.5 12h5M16.5 12h5" />
+      <circle cx="12" cy="12" r="1.6" />
+    </>
+  ),
+  compass: (
+    <>
+      <circle cx="12" cy="12" r="9.5" />
+      <path d="m15.5 8.5-2 5-5 2 2-5z" />
+    </>
+  ),
+  pin: (
+    <>
+      <path d="M12 22s7-6.3 7-12a7 7 0 1 0-14 0c0 5.7 7 12 7 12z" />
+      <circle cx="12" cy="10" r="2.6" />
+    </>
+  ),
+  hourglass: (
+    <>
+      <path d="M7 2h10" />
+      <path d="M7 22h10" />
+      <path d="M7 2c0 5 5 6 5 10s-5 5-5 10" />
+      <path d="M17 2c0 5-5 6-5 10s5 5 5 10" />
+    </>
+  ),
+  waves: (
+    <>
+      <path d="M2 8c2.2 0 2.2 2 4.4 2S8.6 8 10.8 8s2.2 2 4.4 2 2.2-2 4.4-2 2.2 2 4.4 2" />
+      <path d="M2 14c2.2 0 2.2 2 4.4 2s2.2-2 4.4-2 2.2 2 4.4 2 2.2-2 4.4-2 2.2 2 4.4 2" />
+    </>
+  ),
+  grid: (
+    <>
+      <rect x="3" y="3" width="7.5" height="7.5" rx="1.5" />
+      <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5" />
+      <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5" />
+      <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5" />
     </>
   ),
 };

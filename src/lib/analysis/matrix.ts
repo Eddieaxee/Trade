@@ -11,7 +11,7 @@ import type { Candle, Granularity, StrengthMatrix, StrengthTFColumn } from '@/li
 import { CURRENCIES, STAR_PAIRS, TTL_STRENGTH_MATRIX, canonicalPair } from '@/lib/constants';
 import { cacheGet, cacheKey, cacheSet } from '@/lib/cache';
 import { getCandlesCached } from '@/lib/providers';
-import { mean } from '@/lib/utils';
+import { mean, pctChange } from '@/lib/utils';
 
 /** Rolling window (bars) used per timeframe. */
 const WINDOW_BARS: Partial<Record<Granularity, number>> = {
@@ -249,6 +249,13 @@ export interface StrengthHistoryPoint {
  * Cumulative all-against-all % move per currency from the window start date,
  * day by day — exactly how BabyPips MarketMilk traces strength over 1W / 1M.
  * Built from the daily ECB/Frankfurter reference-rate series (keyless).
+ *
+ * RAW PAIRWISE (no z-score, no EUR anchor): for each date we derive all 28
+ * crosses from the 7 EUR-star rates, compute each pair's % change from the
+ * window start, then per-currency average its signed % change across the 7
+ * direct crosses it forms (base +, quote −, inversions handled). Every
+ * currency is measured against every other — zero-sum by construction, but
+ * expressed as raw %, not a normalized index.
  */
 export async function buildStrengthHistory(days: number): Promise<{
   range: string;
@@ -259,35 +266,62 @@ export async function buildStrengthHistory(days: number): Promise<{
   const { series } = await getRatesCached();
   if (series.length < 3) throw new Error('rate history too short for strength lines');
   const window = series.slice(-Math.max(3, days));
-  const start = window[0];
-  const startRate: Record<string, number> = {};
-  for (const ccy of CURRENCIES) {
-    const v = ccy === 'EUR' ? 1 : start.rates[ccy];
-    if (Number.isFinite(v as number) && (v as number) > 0) startRate[ccy] = v as number;
+
+  // Build canonical 28-pair cross table (base, quote) in institutional order.
+  const ccies = CURRENCIES;
+  const xpairs: Array<{ base: string; quote: string }> = [];
+  for (let i = 0; i < ccies.length; i++) {
+    for (let j = i + 1; j < ccies.length; j++) {
+      const sym = canonicalPair(ccies[i], ccies[j]);
+      xpairs.push({ base: sym.slice(0, 3), quote: sym.slice(3) });
+    }
   }
-  const points: StrengthHistoryPoint[] = window.map((pt) => {
-    // % move of each currency vs EUR since window start (EURXXX inverse).
-    const ch: Partial<Record<string, number>> = {};
-    for (const ccy of CURRENCIES) {
-      const s0 = startRate[ccy];
-      const now = ccy === 'EUR' ? 1 : pt.rates[ccy];
-      if (!s0 || !Number.isFinite(now as number) || (now as number) <= 0) continue;
-      // EURX = 1 EUR in X → X vs EUR change = s0/now − 1 (X appreciated when now drops).
-      ch[ccy] = ccy === 'EUR' ? 0 : (s0 / (now as number) - 1) * 100;
+
+  // For each currency, pre-compute its EUR-star rate series (EUR = 1/base).
+  // crossRate(base, quote) = rates[quote] / rates[base]  (value of 1 base in quote).
+  const pts: Array<{ t: number; iso: string; rates: Record<string, number> }> = [];
+  for (const pt of window) {
+    const r: Record<string, number> = {};
+    for (const c of ccies) r[c] = c === 'EUR' ? 1 : (pt.rates[c] ?? null);
+    pts.push({ t: pt.t, iso: new Date(pt.t * 1000).toISOString().slice(0, 10), rates: r });
+  }
+
+  const startRates = pts[0].rates;
+
+  const points: StrengthHistoryPoint[] = pts.map((pt) => {
+    const ch: Record<string, number> = {};
+    // For each currency, average its signed % change across all 7 direct pairs.
+    for (const ccy of ccies) {
+      const vals: number[] = [];
+      for (const { base, quote } of xpairs) {
+        if (base !== ccy && quote !== ccy) continue;
+        const s0b = startRates[base], s0q = startRates[quote];
+        const nowb = pt.rates[base], nowq = pt.rates[quote];
+        if (s0b == null || s0q == null || nowb == null || nowq == null) continue;
+        if (s0b <= 0 || s0q <= 0 || nowb <= 0 || nowq <= 0) continue;
+        const before = s0q / s0b; // cross rate at start
+        const after = nowq / nowb; // cross rate at pt
+        const chg = pctChange(before, after); // already a % number
+        if (chg !== null && Number.isFinite(chg)) {
+          const sign = base === ccy ? 1 : -1;
+          vals.push(chg * sign);
+        }
+      }
+      ch[ccy] = vals.length ? mean(vals) : 0;
     }
-    // All-against-all: ch(A vs B) = chA − chB → mean over the other 7.
     const scores: Record<string, number | null> = {};
-    const finite = CURRENCIES.filter((c) => Number.isFinite(ch[c] as number));
-    const m = finite.length ? mean(finite.map((c) => ch[c] as number)) : 0;
-    for (const c of CURRENCIES) {
-      scores[c] = Number.isFinite(ch[c] as number)
-        ? Math.round(((ch[c] as number) - m) * 1000) / 1000
-        : null;
-    }
-    return { date: new Date(pt.t * 1000).toISOString().slice(0, 10), scores };
+    for (const c of ccies) scores[c] = ch[c] != null ? Math.round(ch[c] * 1000) / 1000 : null;
+    return { date: pt.iso, scores };
   });
+
+  // First point IS the window start (all zeros by construction) — it was
+  // already emitted by the map above, so no extra push is needed.
+  const seen = new Set<string>();
+  const deduped = points.filter((p) => (seen.has(p.date) ? false : (seen.add(p.date), true)));
+  deduped.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
   notes.push('Cumulative all-against-all % move from the window start (0 = start date).');
-  return { range: days <= 10 ? '1w' : '1m', points, notes };
+  return { range: days <= 10 ? '1w' : '1m', points: deduped, notes };
 }
 
 export async function getStrengthMatrixCached(): Promise<StrengthMatrix> {
